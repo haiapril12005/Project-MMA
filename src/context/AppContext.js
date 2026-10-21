@@ -1,32 +1,40 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api';
-import { SESSION_KEY } from '../config';
+import { FAVORITES_KEY, SESSION_KEY } from '../config';
 
 const Ctx = createContext(null);
-export const useApp = () => useContext(Ctx);
+export const useApp = () => {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error('useApp phải được dùng bên trong <AppProvider>');
+  return ctx;
+};
 
-const normUser = (u) => ({ ...u, favorites: (u.favorites || []).map(String), cart: u.cart || [] });
+const normUser = (u) => ({ ...u, cart: u.cart || [] });
 
 export function AppProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUserState] = useState(null);
+  const [favorites, setFavorites] = useState([]); // mảng id sản phẩm, lưu AsyncStorage
   const [ready, setReady] = useState(false);
+  const [toast, setToast] = useState(null); // { id, text }
   const userRef = useRef(null);
 
   const setUser = (u) => { userRef.current = u; setUserState(u); };
   // Cập nhật ngay trên máy, đồng bộ lên server (users) ở nền
   const save = (next) => { setUser(next); api.users.update(next.id, next).catch(() => {}); };
 
+  const notify = useCallback((text) => setToast({ id: Date.now(), text }), []);
+
   const loadProducts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const list = await api.products();
-      setProducts(list.map((p) => ({ ...p, id: String(p.id), price: Number(p.price), percentOff: Number(p.percentOff || 0) })));
+      setProducts(list.map((p) => ({ ...p, id: String(p.id), price: Number(p.price), percentOff: Number(p.percentOff || 0), stock: Number(p.stock ?? 99) })));
     } catch (e) {
-      setError('Không tải được sản phẩm. Kiểm tra kết nối hoặc BASE_URL trong src/config.js.');
+      setError('Không tải được sản phẩm. Kiểm tra kết nối mạng hoặc BASE_URL trong src/config.js.');
     } finally { setLoading(false); }
   }, []);
 
@@ -34,7 +42,8 @@ export function AppProvider({ children }) {
     loadProducts();
     (async () => {
       try {
-        const id = await AsyncStorage.getItem(SESSION_KEY);
+        const [id, favRaw] = await Promise.all([AsyncStorage.getItem(SESSION_KEY), AsyncStorage.getItem(FAVORITES_KEY)]);
+        if (favRaw) setFavorites(JSON.parse(favRaw));
         if (id) {
           const u = (await api.users.list()).find((x) => String(x.id) === id);
           if (u) setUser(normUser(u));
@@ -44,6 +53,7 @@ export function AppProvider({ children }) {
     })();
   }, [loadProducts]);
 
+  // ---------- Đăng nhập ----------
   const startSession = async (u) => { setUser(normUser(u)); await AsyncStorage.setItem(SESSION_KEY, String(u.id)); };
 
   const login = async (email, password) => {
@@ -54,7 +64,7 @@ export function AppProvider({ children }) {
   const register = async ({ name, email, password }) => {
     const users = await api.users.list();
     if (users.some((x) => x.email.toLowerCase() === email.trim().toLowerCase())) throw new Error('Email này đã được đăng ký.');
-    const u = await api.users.create({ name: name.trim(), email: email.trim(), password, phone: '', address: '', favorites: [], cart: [] });
+    const u = await api.users.create({ name: name.trim(), email: email.trim(), password, phone: '', address: '', cart: [] });
     await startSession(u);
   };
   const logout = async () => { setUser(null); await AsyncStorage.removeItem(SESSION_KEY); };
@@ -64,12 +74,18 @@ export function AppProvider({ children }) {
     save({ ...userRef.current, password: newPw });
   };
 
-  const isFav = (id) => !!user && user.favorites.includes(String(id));
+  // ---------- Yêu thích (AsyncStorage, không cần đăng nhập) ----------
+  const persistFav = (next) => { setFavorites(next); AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(next)).catch(() => {}); };
+  const isFav = (id) => favorites.includes(String(id));
   const toggleFavorite = (id) => {
-    const u = userRef.current; const sid = String(id);
-    save({ ...u, favorites: u.favorites.includes(sid) ? u.favorites.filter((x) => x !== sid) : [...u.favorites, sid] });
+    const sid = String(id);
+    const adding = !favorites.includes(sid);
+    persistFav(adding ? [sid, ...favorites] : favorites.filter((x) => x !== sid));
+    notify(adding ? 'Đã lưu vào Yêu thích' : 'Đã bỏ khỏi Yêu thích');
   };
+  const clearFavorites = () => { persistFav([]); notify('Đã xóa toàn bộ danh sách yêu thích'); };
 
+  // ---------- Giỏ hàng (lưu theo tài khoản) ----------
   const addToCart = (id, qty = 1) => {
     const u = userRef.current; const sid = String(id);
     const stock = products.find((p) => p.id === sid)?.stock ?? 99;
@@ -78,6 +94,7 @@ export function AppProvider({ children }) {
       ? u.cart.map((c) => (c.productId === sid ? { ...c, quantity: Math.min(stock, c.quantity + qty) } : c))
       : [...u.cart, { productId: sid, quantity: Math.min(stock, qty) }];
     save({ ...u, cart });
+    notify('Đã thêm vào giỏ hàng');
   };
   const setQty = (id, qty) => {
     const u = userRef.current;
@@ -89,7 +106,15 @@ export function AppProvider({ children }) {
   const cartCount = user ? user.cart.reduce((s, c) => s + c.quantity, 0) : 0;
 
   return (
-    <Ctx.Provider value={{ products, loading, error, loadProducts, user, ready, login, register, logout, updateProfile, changePassword, isFav, toggleFavorite, addToCart, setQty, removeFromCart, clearCart, cartCount }}>
+    <Ctx.Provider
+      value={{
+        products, loading, error, loadProducts, user, ready,
+        login, register, logout, updateProfile, changePassword,
+        favorites, isFav, toggleFavorite, clearFavorites,
+        addToCart, setQty, removeFromCart, clearCart, cartCount,
+        toast, notify,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );

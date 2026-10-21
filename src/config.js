@@ -3,5 +3,7 @@
 export const USE_MOCK = true;
 export const BASE_URL = 'https://YOUR_PROJECT_ID.mockapi.io/api/v1';
 // Tăng số này nếu bạn sửa seed.js và muốn app nạp lại dữ liệu mẫu mới
-export const SEED_VERSION = 1;
+export const SEED_VERSION = 2;
 export const SESSION_KEY = 'furworld:session';
+// Danh sách yêu thích lưu trên máy bằng AsyncStorage (không cần đăng nhập)
+export const FAVORITES_KEY = 'furworld:favorites';

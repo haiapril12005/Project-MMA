@@ -1,67 +1,114 @@
 import React from 'react';
-import { Alert, FlatList, Image, Pressable, View } from 'react-native';
-import { Button, IconButton, Text, useTheme } from 'react-native-paper';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
-import { finalPrice, formatVND } from '../utils';
+import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
+import { confirmAction, finalPrice, formatVND } from '../utils';
+import { Button, EmptyState, IconButton, ProductImage, QtyStepper, Txt } from '../components/ui';
 
 export default function CartScreen({ navigation }) {
-  const { colors } = useTheme();
-  const { user, products, setQty, removeFromCart, clearCart } = useApp();
+  const insets = useSafeAreaInsets();
+  const { user, products, setQty, removeFromCart, clearCart, notify } = useApp();
   const items = (user?.cart || []).map((c) => ({ ...c, product: products.find((p) => p.id === c.productId) })).filter((i) => i.product);
-  const total = items.reduce((s, i) => s + finalPrice(i.product) * i.quantity, 0);
+  const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
+  const total = items.reduce((sum, i) => sum + finalPrice(i.product) * i.quantity, 0);
+  const saved = subtotal - total;
 
-  const confirmClear = () => Alert.alert('Xóa tất cả', 'Xóa toàn bộ sản phẩm trong giỏ hàng?', [
-    { text: 'Hủy', style: 'cancel' }, { text: 'Xóa tất cả', style: 'destructive', onPress: clearCart },
-  ]);
+  const header = (
+    <View style={[s.head, { paddingTop: insets.top + 16 }]}>
+      <View>
+        <Txt v="display">Giỏ hàng</Txt>
+        <Txt v="small" color={colors.inkSoft}>{items.length ? `${items.length} sản phẩm` : 'Chưa có sản phẩm nào'}</Txt>
+      </View>
+      {items.length > 0 && (
+        <Pressable
+          onPress={() => confirmAction({ title: 'Xóa giỏ hàng', message: 'Xóa toàn bộ sản phẩm trong giỏ?', confirmText: 'Xóa tất cả', destructive: true, onConfirm: clearCart })}
+          style={s.clear}
+        >
+          <Txt v="caption" color={colors.danger} style={{ fontSize: 13 }}>Xóa tất cả</Txt>
+        </Pressable>
+      )}
+    </View>
+  );
 
-  if (!user) return <Empty text="Đăng nhập để xem giỏ hàng." action="Đăng nhập" onPress={() => navigation.navigate('Login')} />;
-  if (items.length === 0) return <Empty text="Giỏ hàng đang trống. Hãy chọn vài món nội thất cho ngôi nhà của bạn." action="Xem sản phẩm" onPress={() => navigation.navigate('Tabs')} />;
+  if (!user) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {header}
+        <EmptyState icon="cart-outline" title="Đăng nhập để xem giỏ hàng" text="Giỏ hàng được lưu theo tài khoản để bạn mua tiếp trên mọi thiết bị." action="Đăng nhập" onPress={() => navigation.navigate('Login')} />
+      </View>
+    );
+  }
+
+  const checkout = () => confirmAction({
+    title: 'Xác nhận đặt hàng',
+    message: `Tổng thanh toán ${formatVND(total)}. Giao đến: ${user.address || 'chưa có địa chỉ, cửa hàng sẽ gọi để xác nhận'}.`,
+    confirmText: 'Đặt hàng',
+    onConfirm: () => { clearCart(); notify('Đặt hàng thành công, cửa hàng sẽ gọi xác nhận'); },
+  });
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-        <Text>{items.length} sản phẩm</Text>
-        <Button icon="delete-sweep-outline" textColor="#B3261E" onPress={confirmClear}>Xóa tất cả</Button>
-      </View>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
         data={items}
         keyExtractor={(i) => i.productId}
-        contentContainerStyle={{ padding: 12, gap: 10 }}
+        ListHeaderComponent={header}
+        contentContainerStyle={{ paddingBottom: items.length ? 24 : 32, flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ListEmptyComponent={<EmptyState icon="sofa-outline" title="Giỏ hàng đang trống" text="Chọn vài món nội thất cho ngôi nhà của bạn nhé." action="Mua sắm ngay" onPress={() => navigation.navigate('Home')} />}
         renderItem={({ item: { product: p, quantity } }) => (
-          <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.outline, padding: 10, gap: 12 }}>
+          <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })}>
-              <Image source={{ uri: p.uri }} style={{ width: 88, height: 88, borderRadius: 10, backgroundColor: colors.surfaceVariant }} />
+              <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
             </Pressable>
             <View style={{ flex: 1, justifyContent: 'space-between' }}>
-              <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })}>
-                <Text variant="titleSmall" numberOfLines={2}>{p.name}</Text>
-                <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>{p.category}</Text>
-              </Pressable>
-              <Text style={{ color: colors.primary, fontWeight: '700' }}>{formatVND(finalPrice(p))}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <IconButton icon="minus" size={16} mode="outlined" disabled={quantity <= 1} onPress={() => setQty(p.id, quantity - 1)} style={{ margin: 0 }} />
-                <Text style={{ minWidth: 32, textAlign: 'center' }}>{quantity}</Text>
-                <IconButton icon="plus" size={16} mode="outlined" disabled={quantity >= p.stock} onPress={() => setQty(p.id, quantity + 1)} style={{ margin: 0 }} />
-                <View style={{ flex: 1 }} />
-                <IconButton icon="trash-can-outline" iconColor="#B3261E" size={20} onPress={() => removeFromCart(p.id)} accessibilityLabel="Xóa sản phẩm" />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => navigation.navigate('Detail', { id: p.id })}>
+                  <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20 }}>{p.name}</Txt>
+                  <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>
+                </Pressable>
+                <IconButton icon="trash-can-outline" color={colors.inkSoft} bg="transparent" size={32} iconSize={20} onPress={() => removeFromCart(p.id)} label="Xóa khỏi giỏ" />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(finalPrice(p) * quantity)}</Txt>
+                <QtyStepper value={quantity} max={p.stock} onChange={(v) => setQty(p.id, v)} />
               </View>
             </View>
           </View>
         )}
       />
-      <View style={{ padding: 16, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.outline, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text variant="titleMedium">Tổng cộng</Text>
-        <Text variant="titleLarge" style={{ color: colors.primary, fontWeight: '700' }}>{formatVND(total)}</Text>
-      </View>
+
+      {items.length > 0 && (
+        <View style={[s.summary, { paddingBottom: 16 }]}>
+          <Line label="Tạm tính" value={formatVND(subtotal)} />
+          {saved > 0 && <Line label="Giảm giá" value={`-${formatVND(saved)}`} color={colors.success} />}
+          <Line label="Giao hàng và lắp đặt" value="Miễn phí" color={colors.success} />
+          <View style={s.totalRow}>
+            <Txt v="subtitle">Tổng cộng</Txt>
+            <Txt v="display" color={colors.primary} style={{ fontSize: 22, lineHeight: 30 }}>{formatVND(total)}</Txt>
+          </View>
+          <Button title="Đặt hàng" icon="check" onPress={checkout} />
+        </View>
+      )}
     </View>
   );
 }
 
-function Empty({ text, action, onPress }) {
+function Line({ label, value, color = colors.ink }) {
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
-      <Text style={{ textAlign: 'center' }}>{text}</Text>
-      <Button mode="contained" onPress={onPress}>{action}</Button>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+      <Txt v="small" color={colors.inkSoft}>{label}</Txt>
+      <Txt v="small" color={color}>{value}</Txt>
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  head: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: SCREEN_PADDING, paddingBottom: 18 },
+  clear: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: '#F3E1DC' },
+  row: { flexDirection: 'row', gap: 14, marginHorizontal: SCREEN_PADDING, padding: 12, backgroundColor: colors.surface, borderRadius: radius.card },
+  thumb: { width: 88, height: 88, borderRadius: radius.img - 2 },
+  summary: { backgroundColor: colors.surface, paddingHorizontal: SCREEN_PADDING, paddingTop: 18, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card, ...shadow, shadowOffset: { width: 0, height: -4 } },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, marginBottom: 14 },
+});
