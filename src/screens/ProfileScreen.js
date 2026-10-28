@@ -57,6 +57,7 @@ export default function ProfileScreen({ navigation }) {
 
       <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Cài đặt</Txt>
       <View style={s.group}>
+        <Cell icon="package-variant-closed" title="Đơn hàng của tôi" onPress={() => navigation.navigate('Orders')} />
         <Cell icon="account-edit-outline" title="Sửa thông tin" onPress={() => navigation.navigate('EditProfile')} />
         <Cell icon="lock-outline" title="Đổi mật khẩu" onPress={() => navigation.navigate('ChangePassword')} last />
       </View>

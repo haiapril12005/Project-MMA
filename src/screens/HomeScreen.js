@@ -1,9 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, Platform } from 'react-native';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import { FlatList, ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, fonts, radius, SCREEN_PADDING } from '../theme';
-import { applyFilters, brandsOf, CATEGORIES, greeting, SORTS } from '../utils';
+import { applyFilters, brandsOf, CATEGORIES, greeting, SORTS, PRICE_RANGES } from '../utils';
 import ProductCard from '../components/ProductCard';
 import { Button, Chip, EmptyState, Icon, Skeleton, Txt } from '../components/ui';
 
@@ -15,15 +15,25 @@ export default function HomeScreen({ navigation }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Tất cả');
   const [brand, setBrand] = useState(null);
+  const PAGE = 8;
   const [sort, setSort] = useState('priceDesc');
+  const [range, setRange] = useState('all');
+  const [deal, setDeal] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
 
   const brands = useMemo(() => brandsOf(products), [products]);
-  const data = useMemo(() => applyFilters(products, { q, cat, brand, sort }), [products, q, cat, brand, sort]);
+  const data = useMemo(() => applyFilters(products, { q, cat, brand, sort, range, deal }), [products, q, cat, brand, sort, range, deal]);
+  const visible = useMemo(() => data.slice(0, limit), [data, limit]);
+  const hasMore = limit < data.length;
   const sortInfo = SORTS.find((x) => x.key === sort);
-  const showHero = !q && cat === 'Tất cả' && !brand;
+  const showHero = !q && cat === 'Tất cả' && !brand && range === 'all' && !deal;
   const firstName = user?.name?.trim().split(' ').pop();
 
-  const resetFilters = () => { setQ(''); setCat('Tất cả'); setBrand(null); };
+  // Back to page 1 whenever a filter changes
+  useEffect(() => { setLimit(PAGE); }, [q, cat, brand, sort, range, deal]);
+
+  const loadMore = () => { if (hasMore) setLimit((l) => l + PAGE); };
+  const resetFilters = () => { setQ(''); setCat('Tất cả'); setBrand(null); setRange('all'); setDeal(false); };
   const renderItem = useCallback(({ item }) => <ProductCard item={item} />, []);
 
   const header = (
@@ -86,6 +96,14 @@ export default function HomeScreen({ navigation }) {
         })}
       </ScrollView>
 
+      {/* Giá + khuyến mãi */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.brandRow}>
+        <Chip label="Đang giảm giá" icon="tag-outline" selected={deal} onPress={() => setDeal(!deal)} />
+        {PRICE_RANGES.map((r) => (
+          <Chip key={r.key} label={r.label} selected={range === r.key} onPress={() => setRange(r.key)} />
+        ))}
+      </ScrollView>
+
       {/* Thương hiệu */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.brandRow}>
         <Chip label="Mọi thương hiệu" selected={!brand} onPress={() => setBrand(null)} />
@@ -125,12 +143,15 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
-        data={loading ? [] : data}
+        data={loading ? [] : visible}
         keyExtractor={(i) => i.id}
         numColumns={2}
         renderItem={renderItem}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
+        ListFooterComponent={hasMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} /> : null}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
         contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING - 6, paddingBottom: 32 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

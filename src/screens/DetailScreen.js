@@ -28,7 +28,7 @@ export default function DetailScreen({ route, navigation }) {
 
   useEffect(() => {
     let active = true;
-    api.reviews.byProduct(route.params.id).then((list) => active && setReviews(list)).catch(() => {});
+    api.reviews.byProduct(route.params.id).then((list) => active && setReviews(list)).catch(() => { });
     return () => { active = false; };
   }, [route.params.id]);
   useEffect(() => { setRating(mine ? mine.rating : 5); setComment(mine ? mine.comment : ''); }, [mine?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -229,7 +229,7 @@ export default function DetailScreen({ route, navigation }) {
           icon="cart-outline"
           style={{ flex: 1 }}
           disabled={product.stock <= 0}
-          onPress={() => { if (!needLogin()) addToCart(product.id, qty); }}
+          onPress={() => { if (!needLogin()) addToCart(product.id, qty, color); }}
         />
       </View>
     </View>

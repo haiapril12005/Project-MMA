@@ -122,5 +122,6 @@ products.forEach((p) => {
     });
   }
 });
+const orders = [];
 
 module.exports = { products, users, reviews };

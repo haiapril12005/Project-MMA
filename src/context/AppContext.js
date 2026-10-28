@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api';
 import { FAVORITES_KEY, SESSION_KEY } from '../config';
+import { finalPrice } from '../utils';
 
 const Ctx = createContext(null);
 export const useApp = () => {
@@ -9,8 +10,10 @@ export const useApp = () => {
   if (!ctx) throw new Error('useApp phải được dùng bên trong <AppProvider>');
   return ctx;
 };
-
+const normProduct = (p) => ({ ...p, id: String(p.id), price: Number(p.price), percentOff: Number(p.percentOff || 0), stock: Number(p.stock ?? 99) });
 const normUser = (u) => ({ ...u, cart: u.cart || [] });
+const sameLine = (c, productId, color) =>
+  c.productId === productId && (c.color || null) === (color || null);
 
 export function AppProvider({ children }) {
   const [products, setProducts] = useState([]);
@@ -24,7 +27,7 @@ export function AppProvider({ children }) {
 
   const setUser = (u) => { userRef.current = u; setUserState(u); };
   // Cập nhật ngay trên máy, đồng bộ lên server (users) ở nền
-  const save = (next) => { setUser(next); api.users.update(next.id, next).catch(() => {}); };
+  const save = (next) => { setUser(next); api.users.update(next.id, next).catch(() => { }); };
 
   const notify = useCallback((text) => setToast({ id: Date.now(), text }), []);
 
@@ -75,7 +78,7 @@ export function AppProvider({ children }) {
   };
 
   // ---------- Yêu thích (AsyncStorage, không cần đăng nhập) ----------
-  const persistFav = (next) => { setFavorites(next); AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(next)).catch(() => {}); };
+  const persistFav = (next) => { setFavorites(next); AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(next)).catch(() => { }); };
   const isFav = (id) => favorites.includes(String(id));
   const toggleFavorite = (id) => {
     const sid = String(id);
@@ -86,23 +89,93 @@ export function AppProvider({ children }) {
   const clearFavorites = () => { persistFav([]); notify('Đã xóa toàn bộ danh sách yêu thích'); };
 
   // ---------- Giỏ hàng (lưu theo tài khoản) ----------
-  const addToCart = (id, qty = 1) => {
+  const addToCart = (id, qty = 1, color = null) => {
     const u = userRef.current; const sid = String(id);
-    const stock = products.find((p) => p.id === sid)?.stock ?? 99;
-    const has = u.cart.find((c) => c.productId === sid);
+    const product = products.find((p) => p.id === sid);
+    const stock = product?.stock ?? 99;
+    if (stock <= 0) { notify('Sản phẩm đã hết hàng'); return; }
+    const chosen = color ?? product?.color?.[0] ?? null; // default to first color (e.g. from Favorites)
+    const has = u.cart.find((c) => sameLine(c, sid, chosen));
     const cart = has
-      ? u.cart.map((c) => (c.productId === sid ? { ...c, quantity: Math.min(stock, c.quantity + qty) } : c))
-      : [...u.cart, { productId: sid, quantity: Math.min(stock, qty) }];
+      ? u.cart.map((c) => (sameLine(c, sid, chosen) ? { ...c, quantity: Math.min(stock, c.quantity + qty) } : c))
+      : [...u.cart, { productId: sid, color: chosen, quantity: Math.min(stock, qty) }];
     save({ ...u, cart });
     notify('Đã thêm vào giỏ hàng');
   };
-  const setQty = (id, qty) => {
-    const u = userRef.current;
-    const stock = products.find((p) => p.id === String(id))?.stock ?? 99;
-    save({ ...u, cart: u.cart.map((c) => (c.productId === String(id) ? { ...c, quantity: Math.max(1, Math.min(stock, qty)) } : c)) });
+
+  const setQty = (id, qty, color = null) => {
+    const u = userRef.current; const sid = String(id);
+    const stock = products.find((p) => p.id === sid)?.stock ?? 99;
+    save({ ...u, cart: u.cart.map((c) => (sameLine(c, sid, color) ? { ...c, quantity: Math.max(1, Math.min(stock, qty)) } : c)) });
   };
-  const removeFromCart = (id) => save({ ...userRef.current, cart: userRef.current.cart.filter((c) => c.productId !== String(id)) });
+
+  const removeFromCart = (id, color = null) =>
+    save({ ...userRef.current, cart: userRef.current.cart.filter((c) => !sameLine(c, String(id), color)) });
+
   const clearCart = () => save({ ...userRef.current, cart: [] });
+
+  const placeOrder = async (lines, total) => {
+    const u = userRef.current;
+    const fresh = (await api.products()).map(normProduct); // latest stock, not the possibly stale local copy
+
+    // Total quantity per product (the same product in 2 colors counts together)
+    const need = {};
+    lines.forEach((l) => { need[l.productId] = (need[l.productId] || 0) + l.quantity; });
+
+    // 1. Check stock before creating anything
+    const problem = Object.keys(need).map((pid) => {
+      const p = fresh.find((x) => x.id === pid);
+      if (!p) return 'Có sản phẩm đã ngừng bán.';
+      return p.stock < need[pid] ? `"${p.name}" chỉ còn ${p.stock} sản phẩm.` : null;
+    }).find(Boolean);
+    if (problem) { setProducts(fresh); throw new Error(problem); }
+
+    // 2. Create the order (snapshot of items)
+    const order = await api.orders.create({
+      userId: u.id,
+      userName: u.name,
+      phone: u.phone || '',
+      address: u.address || '',
+      items: lines.map((l) => ({
+        productId: l.productId,
+        name: l.product.name,
+        uri: l.product.uri,
+        category: l.product.category,
+        color: l.color || null,
+        price: finalPrice(l.product),
+        quantity: l.quantity,
+      })),
+      total,
+      status: 'processing',
+      createdAt: new Date().toISOString(),
+    });
+
+    // 3. Subtract stock (one by one, see note below)
+    const updated = fresh.map((p) => (need[p.id] ? { ...p, stock: p.stock - need[p.id] } : p));
+    for (const pid of Object.keys(need)) {
+      // eslint-disable-next-line no-await-in-loop
+      await api.updateProduct(pid, updated.find((p) => p.id === pid));
+    }
+    setProducts(updated);
+    clearCart();
+    return order;
+  };
+
+  const cancelOrder = async (order) => {
+    await api.orders.update(order.id, { ...order, status: 'cancelled' });
+
+    // Give the stock back
+    const back = {};
+    order.items.forEach((i) => { back[i.productId] = (back[i.productId] || 0) + i.quantity; });
+    const fresh = (await api.products()).map(normProduct);
+    const updated = fresh.map((p) => (back[p.id] ? { ...p, stock: p.stock + back[p.id] } : p));
+    for (const pid of Object.keys(back)) {
+      const p = updated.find((x) => x.id === pid);
+      // eslint-disable-next-line no-await-in-loop
+      if (p) await api.updateProduct(pid, p);
+    }
+    setProducts(updated);
+  };
   const cartCount = user ? user.cart.reduce((s, c) => s + c.quantity, 0) : 0;
 
   return (
@@ -112,7 +185,7 @@ export function AppProvider({ children }) {
         login, register, logout, updateProfile, changePassword,
         favorites, isFav, toggleFavorite, clearFavorites,
         addToCart, setQty, removeFromCart, clearCart, cartCount,
-        toast, notify,
+        toast, notify, placeOrder, cancelOrder,
       }}
     >
       {children}

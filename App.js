@@ -14,6 +14,7 @@ import { colors, navTheme } from './src/theme';
 import { AppProvider } from './src/context/AppContext';
 import RootNavigator from './src/navigation';
 import Toast from './src/components/Toast';
+import ConfirmDialog from './src/components/ConfirmDialog';
 
 export default function App() {
   const [fontsLoaded] = useFonts({ BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold });
@@ -30,6 +31,7 @@ export default function App() {
               <RootNavigator />
             </NavigationContainer>
             <Toast />
+            <ConfirmDialog />
           </AppProvider>
         </View>
       </View>

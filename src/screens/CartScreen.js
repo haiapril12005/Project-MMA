@@ -3,12 +3,12 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
-import { confirmAction, finalPrice, formatVND } from '../utils';
+import { confirmAction, finalPrice, formatVND, SWATCHES } from '../utils';
 import { Button, EmptyState, IconButton, ProductImage, QtyStepper, Txt } from '../components/ui';
 
 export default function CartScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, products, setQty, removeFromCart, clearCart, notify } = useApp();
+  const { user, products, setQty, removeFromCart, clearCart, notify, placeOrder } = useApp();
   const items = (user?.cart || []).map((c) => ({ ...c, product: products.find((p) => p.id === c.productId) })).filter((i) => i.product);
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
   const total = items.reduce((sum, i) => sum + finalPrice(i.product) * i.quantity, 0);
@@ -22,7 +22,7 @@ export default function CartScreen({ navigation }) {
       </View>
       {items.length > 0 && (
         <Pressable
-          onPress={() => confirmAction({ title: 'Xóa giỏ hàng', message: 'Xóa toàn bộ sản phẩm trong giỏ?', confirmText: 'Xóa tất cả', destructive: true, onConfirm: clearCart })}
+          onPress={() => confirmAction({ title: 'Xóa giỏ hàng', message: 'Xóa toàn bộ sản phẩm trong giỏ?', confirmText: 'Xóa tất cả', destructive: true, onConfirm: () => { clearCart(); notify('Đã xóa giỏ hàng'); }, })}
           style={s.clear}
         >
           <Txt v="caption" color={colors.danger} style={{ fontSize: 13 }}>Xóa tất cả</Txt>
@@ -44,20 +44,28 @@ export default function CartScreen({ navigation }) {
     title: 'Xác nhận đặt hàng',
     message: `Tổng thanh toán ${formatVND(total)}. Giao đến: ${user.address || 'chưa có địa chỉ, cửa hàng sẽ gọi để xác nhận'}.`,
     confirmText: 'Đặt hàng',
-    onConfirm: () => { clearCart(); notify('Đặt hàng thành công, cửa hàng sẽ gọi xác nhận'); },
+    onConfirm: async () => {
+      try {
+        await placeOrder(items, total);
+        notify('Đặt hàng thành công');
+        navigation.navigate('Orders');
+      } catch (e) {
+        notify(e.message || 'Không đặt được hàng, thử lại sau');
+      }
+    },
   });
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
         data={items}
-        keyExtractor={(i) => i.productId}
+        keyExtractor={(i) => `${i.productId}|${i.color || ''}`}
         ListHeaderComponent={header}
         contentContainerStyle={{ paddingBottom: items.length ? 24 : 32, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={<EmptyState icon="sofa-outline" title="Giỏ hàng đang trống" text="Chọn vài món nội thất cho ngôi nhà của bạn nhé." action="Mua sắm ngay" onPress={() => navigation.navigate('Home')} />}
-        renderItem={({ item: { product: p, quantity } }) => (
+        renderItem={({ item: { product: p, quantity, color } }) => (
           <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })}>
               <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
@@ -67,12 +75,18 @@ export default function CartScreen({ navigation }) {
                 <Pressable style={{ flex: 1 }} onPress={() => navigation.navigate('Detail', { id: p.id })}>
                   <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20 }}>{p.name}</Txt>
                   <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>
+                  {!!color && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: SWATCHES[color] || colors.sunken, borderWidth: 1, borderColor: colors.line }} />
+                      <Txt v="caption" color={colors.inkSoft}>{color}</Txt>
+                    </View>
+                  )}
                 </Pressable>
-                <IconButton icon="trash-can-outline" color={colors.inkSoft} bg="transparent" size={32} iconSize={20} onPress={() => removeFromCart(p.id)} label="Xóa khỏi giỏ" />
+                <IconButton icon="trash-can-outline" color={colors.inkSoft} bg="transparent" size={32} iconSize={20} onPress={() => removeFromCart(p.id, color)} label="Xóa khỏi giỏ" />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
                 <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(finalPrice(p) * quantity)}</Txt>
-                <QtyStepper value={quantity} max={p.stock} onChange={(v) => setQty(p.id, v)} />
+                <QtyStepper value={quantity} max={p.stock} onChange={(v) => setQty(p.id, v, color)} />
               </View>
             </View>
           </View>
