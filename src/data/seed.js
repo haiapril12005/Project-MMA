@@ -58,6 +58,30 @@ const CATALOG = {
   ],
 };
 
+const EXTRA = {
+  'Đèn chùm': [
+    ['Đèn chùm nến Provence 6 tay', 7900000, 'Kova Home', 'Sắt rèn sơn tĩnh điện', 'Ø65 x 60 cm', ['Đen mờ', 'Vàng đồng'], 11256573, 0.1],
+    ['Đèn thả bàn ăn Pendant Gold', 4200000, 'Nhà Nắng', 'Đồng thau, thủy tinh', 'Ø30 x 35 cm', ['Vàng đồng'], 28656088, 0.15],
+  ],
+  Sofa: [
+    ['Sofa giường đa năng Mini', 9800000, 'Kova Home', 'Vải bố, khung gỗ', '180 x 85 x 80 cm', ['Xám tro', 'Kem'], 4857775, 0.1],
+    ['Sofa đơn thư giãn Bành Voi', 11200000, 'Hearth & Oak', 'Nhung, chân gỗ sồi', '95 x 90 x 85 cm', ['Nâu đất', 'Xanh rêu'], 6580416, 0],
+  ],
+  'Ghế gỗ': [
+    ['Ghế ăn gỗ cao su bọc nệm Sài Gòn (bộ 2)', 1980000, 'Nhà Nắng', 'Gỗ cao su, nệm vải', '43 x 50 x 88 cm', ['Mộc tự nhiên', 'Kem'], 29917912, 0.1],
+    ['Ghế bar gỗ sồi chân cao Café', 1450000, 'Mộc An', 'Gỗ sồi', '38 x 38 x 75 cm', ['Mộc tự nhiên', 'Nâu óc chó'], 11736189, 0.05],
+  ],
+  'Bàn ghế': [
+    ['Bàn làm việc gỗ sồi Focus', 4600000, 'Mộc An', 'Gỗ sồi, chân sắt', 'Bàn 120 x 60 x 75 cm', ['Mộc tự nhiên', 'Đen mờ'], 2995012, 0.1],
+    ['Bộ bàn học và ghế công thái học Study', 5900000, 'Kova Home', 'MDF melamine, ghế lưới', 'Bàn 120 x 60 x 75 cm', ['Trắng ngà'], 7166645, 0.15],
+  ],
+  'Gia dụng': [
+    ['Nồi chiên không dầu Smart 6 lít', 2790000, 'Kova Home', 'Thép không gỉ, nhựa PP', 'Dung tích 6 lít', ['Đen mờ'], 18071814, 0.2],
+    ['Máy xay sinh tố Fresh 1.5 lít', 1890000, 'Nhà Nắng', 'Nhựa Tritan, thép', 'Cối 1.5 lít', ['Trắng ngà', 'Hồng phấn'], 11826919, 0],
+  ],
+};
+Object.entries(EXTRA).forEach(([cat, items]) => CATALOG[cat].push(...items));
+
 const DESC = {
   'Đèn chùm': 'ánh sáng vàng ấm, phù hợp phòng khách, phòng ăn hoặc sảnh. Có dịch vụ lắp đặt tận nơi.',
   Sofa: 'ngồi êm, đệm có thể tháo rời để giặt. Hợp với phòng khách từ 15 m² trở lên.',
@@ -122,6 +146,10 @@ products.forEach((p) => {
     });
   }
 });
-const orders = [];
+const productsFull = products.map((p) => ({
+  ...p,
+  reviews: reviews.filter((r) => r.productId === p.id),
+}));
+const usersFull = users.map((u) => ({ ...u, orders: [] }));
 
-module.exports = { products, users, reviews };
+module.exports = { products: productsFull, users: usersFull };
