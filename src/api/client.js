@@ -28,14 +28,6 @@ export const client = {
     if (USE_MOCK) { await delay(); return readMock(resource); }
     return http('GET', `/${resource}`);
   },
-  async get(resource, id) {
-  if (USE_MOCK) {
-    await delay();
-    const all = await readMock(resource);
-    return all.find((x) => String(x.id) === String(id));
-  }
-  return http('GET', `/${resource}/${id}`);
-},
   async create(resource, item) {
     if (USE_MOCK) {
       const all = await readMock(resource);
