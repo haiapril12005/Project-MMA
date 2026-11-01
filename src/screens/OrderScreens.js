@@ -46,7 +46,6 @@ const reorderResultMessage = (result) => {
 };
 
 const CANCELLATION_STATUSES = {
-  auto: { label: 'Đã hủy ngay', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle-outline' },
   pending: { label: 'Đang chờ duyệt hủy', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
   approved: { label: 'Cửa hàng đã chấp nhận', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle-outline' },
   rejected: { label: 'Cửa hàng đã từ chối', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
@@ -89,8 +88,8 @@ function StatusPill({ value, style }) {
   );
 }
 
-function CancellationPill({ value, auto = false, style }) {
-  const info = auto ? CANCELLATION_STATUSES.auto : (CANCELLATION_STATUSES[value] || CANCELLATION_STATUSES.pending);
+function CancellationPill({ value, style }) {
+  const info = CANCELLATION_STATUSES[value] || CANCELLATION_STATUSES.pending;
   return (
     <View style={[s.statusPill, { backgroundColor: info.bg }, style]}>
       <Icon name={info.icon} size={15} color={info.color} />
@@ -494,7 +493,8 @@ export function OrderHistoryScreen({ navigation }) {
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <StatusPill value={item.status} />
-                  {!!item.cancellationRequest && <CancellationPill value={item.cancellationRequest.status} auto={isAutoCancelled(item.cancellationRequest)} />}
+                  {/* Yêu cầu hủy đã được chấp nhận thì đơn đã là "Đã hủy", không cần nhãn thứ hai */}
+                  {!!item.cancellationRequest && item.cancellationRequest.status !== 'approved' && <CancellationPill value={item.cancellationRequest.status} />}
                 </View>
               </View>
               <View style={s.orderPreview}>
@@ -584,7 +584,7 @@ export function OrderDetailScreen({ route, navigation }) {
           <>
             <SectionTitle icon="file-document-edit-outline" title="Yêu cầu hủy đơn" />
             <View style={s.card}>
-              <CancellationPill value={cancellation.status} auto={isAutoCancelled(cancellation)} />
+              {!isAutoCancelled(cancellation) && <CancellationPill value={cancellation.status} />}
               <InfoRow icon="account-outline" label="Người yêu cầu" value="Bạn" />
               <InfoRow icon="message-text-outline" label="Lý do" value={cancellationReasonLabel(cancellation.reasonCode)} />
               {!!cancellation.reasonDetail && <InfoRow icon="text-box-outline" label="Mô tả thêm" value={cancellation.reasonDetail} />}
