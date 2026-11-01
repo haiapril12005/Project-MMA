@@ -311,15 +311,22 @@ export function AppProvider({ children }) {
   const cartCount = user ? user.cart.reduce((sum, item) => sum + item.quantity, 0) : 0;
 
   // ---------- Đơn hàng ----------
-  const placeOrder = async ({ shipping, paymentMethod }) => {
+  const placeOrder = async ({ shipping, paymentMethod, installation }) => {
     const current = userRef.current;
     if (!current || !current.cart.length) throw new Error('Giỏ hàng đang trống.');
     try {
-      const order = await api.orders.place({ shipping, paymentMethod });
+      const order = await api.orders.place({ shipping, paymentMethod, installation });
       setOrders((items) => [order, ...items]);
       setUser({ ...current, cart: [] });
       return order;
     } catch (e) {
+      const message = String(e?.message || '');
+      if (message.includes('INSTALLATION_DATE_INVALID')) {
+        throw new Error('Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.');
+      }
+      if (message.includes('INSTALLATION_TIME_SLOT_INVALID')) {
+        throw new Error('Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.');
+      }
       throw new Error('Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.');
     }
   };
@@ -343,6 +350,25 @@ export function AppProvider({ children }) {
     }
   };
 
+  const reorderOrder = async (orderId) => {
+    const current = userRef.current;
+    if (!current) throw new Error('Bạn cần đăng nhập để mua lại đơn hàng.');
+    try {
+      const result = await api.orders.reorder(orderId);
+      setUser({ ...current, cart: result.cart });
+      return result;
+    } catch (e) {
+      const message = String(e?.message || '');
+      if (message.includes('REORDER_REQUIRES_DELIVERED_ORDER')) {
+        throw new Error('Chỉ đơn đã giao mới có thể mua lại.');
+      }
+      if (message.includes('ORDER_NOT_FOUND')) {
+        throw new Error('Không tìm thấy đơn hàng hoặc bạn không có quyền truy cập.');
+      }
+      throw new Error('Chưa thể thêm lại sản phẩm vào giỏ. Vui lòng thử lại.');
+    }
+  };
+
   return (
     <Ctx.Provider
       value={{
@@ -350,7 +376,7 @@ export function AppProvider({ children }) {
         login, register, resendConfirmation, logout, updateProfile, changePassword,
         favorites, isFav, toggleFavorite, clearFavorites,
         addToCart, setQty, removeFromCart, clearCart, cartCount,
-        orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation,
+        orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation, reorderOrder,
         toast, notify,
       }}
     >

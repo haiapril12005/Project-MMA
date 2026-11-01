@@ -20,6 +20,11 @@ export const PAYMENT_METHODS = [
   { key: 'bank_transfer', label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
 ];
 
+export const INSTALLATION_TIME_SLOTS = [
+  { key: '08:00-12:00', label: 'Buổi sáng', note: '08:00–12:00', icon: 'weather-sunny' },
+  { key: '13:00-17:00', label: 'Buổi chiều', note: '13:00–17:00', icon: 'weather-sunset' },
+];
+
 export const ORDER_STATUSES = {
   pending_confirmation: { label: 'Chờ xác nhận', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
   confirmed: { label: 'Đã xác nhận', color: '#47708A', bg: '#E1EDF3', icon: 'check-circle-outline' },
@@ -37,6 +42,30 @@ export const orderStatus = (key) => ORDER_STATUSES[key] || ORDER_STATUSES.pendin
 export const formatDateTime = (value) => {
   if (!value) return '';
   return new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+export const vietnamDateISO = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+};
+
+export const earliestInstallationDate = () => vietnamDateISO(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+export const isValidISODate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
+
+export const formatDateOnly = (value) => {
+  if (!isValidISODate(value)) return '';
+  return new Date(`${value}T00:00:00+07:00`).toLocaleDateString('vi-VN', {
+    weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh',
+  });
 };
 
 // Màu sắc sản phẩm -> ô màu hiển thị ở trang chi tiết
