@@ -29,8 +29,10 @@ Tài khoản thử: `demo@furworld.vn` / `123456` (màn Đăng nhập có nút "
 | Trang chủ | Lời chào, tìm kiếm không dấu ("den chum" vẫn ra "Đèn chùm"), banner, 5 danh mục, lọc theo thương hiệu, sắp xếp giá (mặc định cao xuống thấp), lưới 2 cột, kéo để tải lại, khung chờ tải |
 | Chi tiết | Ảnh lớn, giá sau giảm và % giảm, chọn màu, thông số dạng lưới, bấm dòng sao để nhảy xuống phần đánh giá, đánh giá gom theo số sao + lọc theo sao, viết/sửa/xóa đánh giá, thanh mua hàng cố định |
 | Yêu thích | Lưu trên máy bằng AsyncStorage (không cần đăng nhập), bỏ từng món, xóa tất cả có xác nhận, thêm nhanh vào giỏ |
-| Giỏ hàng | Tăng/giảm số lượng theo tồn kho, xóa món, xóa tất cả, tạm tính, tiền giảm, tổng cộng, đặt hàng |
-| Tài khoản | Hồ sơ, số món yêu thích/trong giỏ, sửa thông tin, đổi mật khẩu, đăng xuất |
+| Giỏ hàng | Mỗi dòng = sản phẩm + màu đã chọn, tăng/giảm số lượng theo tồn kho (tính chung mọi màu), xóa món, xóa tất cả, thông tin giao hàng, tạm tính, tiền giảm, tổng cộng, đặt hàng |
+| Đặt hàng | Bắt buộc có SĐT (10 số) + địa chỉ; kiểm tra lại tồn kho trên server; tạo đơn trong `orders` (lưu giá, màu, người nhận tại thời điểm đặt); trừ `stock`; xóa giỏ |
+| Đơn hàng | Lịch sử đơn của tài khoản, mới nhất ở trên, trạng thái "Chờ xác nhận" |
+| Tài khoản | Hồ sơ, số món yêu thích/trong giỏ, đơn hàng, sửa thông tin (kiểm tra SĐT), đổi mật khẩu (chỉ báo thành công khi server lưu xong), đăng xuất |
 | Đăng nhập / Đăng ký | Nhãn ở trên ô nhập, lỗi hiển thị ngay dưới từng ô |
 
 ## Cấu trúc
@@ -46,7 +48,7 @@ src/
   navigation/index.js      Native Stack + Bottom Tabs (thanh tab tự thiết kế)
   components/ui.js         Txt, Button, IconButton, Chip, Field, Stars, ProductImage, Skeleton, EmptyState, QtyStepper
   components/              ProductCard, TabBar, Toast
-  screens/                 Home, Detail, Favorites, Cart, Profile, AuthScreens
+  screens/                 Home, Detail, Favorites, Cart, Orders, Profile, AuthScreens
   data/seed.js             40 sản phẩm, 5 thương hiệu, 160 đánh giá mẫu
 ```
 
@@ -54,11 +56,15 @@ Các file `components/TopBar.js`, `components/FilterBar.js`, `screens/ProductLis
 
 ## Chuyển sang mockapi.io thật
 
-1. Tạo project trên mockapi.io với 3 resource: `products`, `users`, `reviews`.
-2. Chạy `npm run seed` để sinh `seed/products.json`, `users.json`, `reviews.json`, rồi import vào mockapi.io.
+1. Tạo project trên mockapi.io với 4 resource: `products`, `users`, `reviews`, `orders`.
+2. Chạy `npm run seed` để sinh `seed/products.json`, `users.json`, `reviews.json`, `orders.json`, rồi import vào mockapi.io.
 3. Trong `src/config.js`: đặt `USE_MOCK = false` và dán `BASE_URL` (dạng `https://xxxx.mockapi.io/api/v1`).
 
 Trường của `products`: `id, name, price, category, brand, color[], material, dimensions, description, uri, percentOff, stock`.
+
+Trường của `users.cart[]`: `productId, color, quantity`.
+
+Trường của `orders`: `id, userId, receiver, phone, address, items[] (productId, name, uri, category, color, quantity, unitPrice), total, status, createdAt`.
 
 ## Ghi chú
 

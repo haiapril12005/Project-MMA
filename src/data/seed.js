@@ -89,7 +89,7 @@ Object.entries(CATALOG).forEach(([category, items]) =>
 );
 
 const users = [
-  { id: '1', name: 'Nguyễn Minh Khôi', email: 'demo@furworld.vn', password: '123456', phone: '0908 214 573', address: '12 Nguyễn Văn Hưởng, Thảo Điền, TP. Thủ Đức', cart: [] },
+  { id: '1', name: 'Phùng Thanh Độ', email: 'demo@furworld.vn', password: '123456', phone: '0123456789', address: 'Chùa Láng, Hà Nội', cart: [] },
 ];
 
 const NAMES = ['Ngọc Hân', 'Đức Huy', 'Bảo Trâm', 'Thanh Tùng', 'Mai Chi', 'Gia Khánh', 'Phương Linh', 'Quang Vinh'];
@@ -123,4 +123,7 @@ products.forEach((p) => {
   }
 });
 
-module.exports = { products, users, reviews };
+// Đơn hàng: bắt đầu rỗng, được tạo khi người dùng bấm "Đặt hàng"
+const orders = [];
+
+module.exports = { products, users, reviews, orders };

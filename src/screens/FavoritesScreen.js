@@ -62,7 +62,7 @@ export default function FavoritesScreen({ navigation }) {
             </View>
             <View style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <IconButton icon="heart" color={colors.primary} bg={colors.primarySoft} size={38} iconSize={19} onPress={() => toggleFavorite(p.id)} label="Bỏ yêu thích" />
-              <IconButton icon="cart-plus" color={colors.ink} bg={colors.sunken} size={38} iconSize={19} onPress={() => (user ? addToCart(p.id) : navigation.navigate('Login'))} label="Thêm vào giỏ" />
+              <IconButton icon="cart-plus" color={colors.ink} bg={colors.sunken} size={38} iconSize={19} onPress={() => (user ? addToCart(p.id, 1, p.color?.[0]) : navigation.navigate('Login'))} label="Thêm vào giỏ" />
             </View>
           </Pressable>
         )}

@@ -26,6 +26,8 @@ export const SWATCHES = {
 export const formatVND = (n) => `${String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
 export const finalPrice = (p) => Math.round(p.price * (1 - (p.percentOff || 0)));
 export const percentLabel = (p) => `-${Math.round((p.percentOff || 0) * 100)}%`;
+// SĐT Việt Nam: 10 số, bắt đầu bằng 0 (cho phép gõ kèm khoảng trắng, dấu chấm, gạch ngang)
+export const isValidPhone = (s = '') => /^0\d{9}$/.test(String(s).replace(/[\s.-]/g, ''));
 
 // Bỏ dấu tiếng Việt để tìm kiếm: "den chum" vẫn ra "Đèn chùm"
 export const norm = (s = '') =>

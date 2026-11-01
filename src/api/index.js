@@ -1,7 +1,10 @@
 import { client } from './client';
 
 export const api = {
-  products: () => client.list('products'),
+  products: {
+    list: () => client.list('products'),
+    update: (id, p) => client.update('products', id, p),
+  },
   users: {
     list: () => client.list('users'),
     create: (u) => client.create('users', u),
@@ -12,5 +15,9 @@ export const api = {
     create: (r) => client.create('reviews', r),
     update: (id, r) => client.update('reviews', id, r),
     remove: (id) => client.remove('reviews', id),
+  },
+  orders: {
+    byUser: async (userId) => (await client.list('orders')).filter((o) => String(o.userId) === String(userId)),
+    create: (o) => client.create('orders', o),
   },
 };

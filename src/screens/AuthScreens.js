@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { isValidPhone } from '../utils';
 import { colors, radius, SCREEN_PADDING } from '../theme';
 import { Button, Field, IconButton, Txt } from '../components/ui';
 
@@ -93,21 +94,32 @@ export function RegisterScreen({ navigation }) {
 export function EditProfileScreen({ navigation }) {
   const { user, updateProfile, notify } = useApp();
   const [f, setF] = useState({ name: user.name, phone: user.phone || '', address: user.address || '' });
+  const [errs, setErrs] = useState({});
   const [err, setErr] = useState('');
-  const set = (k) => (v) => setF({ ...f, [k]: v });
-  const submit = () => {
-    if (!f.name.trim()) { setErr('Tên không được để trống.'); return; }
-    updateProfile({ name: f.name.trim(), phone: f.phone.trim(), address: f.address.trim() });
-    notify('Đã lưu thông tin');
-    navigation.goBack();
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (v) => { setF({ ...f, [k]: v }); setErrs({ ...errs, [k]: undefined }); };
+  const submit = async () => {
+    const e = {};
+    if (!f.name.trim()) e.name = 'Tên không được để trống.';
+    // SĐT và địa chỉ có thể để trống, nhưng bắt buộc khi đặt hàng
+    if (f.phone.trim() && !isValidPhone(f.phone)) e.phone = 'Số điện thoại gồm 10 số, bắt đầu bằng 0.';
+    setErrs(e);
+    if (Object.keys(e).length) return;
+    setBusy(true); setErr('');
+    try {
+      await updateProfile({ name: f.name.trim(), phone: f.phone.trim(), address: f.address.trim() });
+      notify('Đã lưu thông tin');
+      navigation.goBack();
+    } catch (x) { setErr(x.message); setBusy(false); }
   };
   return (
-    <Shell navigation={navigation} title="Sửa thông tin" subtitle="Thông tin này dùng để giao hàng và lắp đặt.">
+    <Shell navigation={navigation} title="Sửa thông tin" subtitle="Số điện thoại và địa chỉ cần có để đặt hàng, cửa hàng sẽ gọi xác nhận và giao tận nơi.">
       <Field label="Email" value={user.email} editable={false} helper="Email dùng để đăng nhập nên không đổi được." />
-      <Field label="Họ và tên" value={f.name} onChangeText={set('name')} error={err} />
-      <Field label="Số điện thoại" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" placeholder="0901 234 567" />
+      <Field label="Họ và tên" value={f.name} onChangeText={set('name')} error={errs.name} />
+      <Field label="Số điện thoại" value={f.phone} onChangeText={set('phone')} error={errs.phone} keyboardType="phone-pad" placeholder="0901 234 567" />
       <Field label="Địa chỉ giao hàng" value={f.address} onChangeText={set('address')} multiline placeholder="Số nhà, đường, phường, quận" />
-      <Button title="Lưu thay đổi" onPress={submit} style={{ marginTop: 6 }} />
+      <FormError text={err} />
+      <Button title="Lưu thay đổi" onPress={submit} loading={busy} style={{ marginTop: 6 }} />
     </Shell>
   );
 }
@@ -116,12 +128,14 @@ export function ChangePasswordScreen({ navigation }) {
   const { changePassword, notify } = useApp();
   const [f, setF] = useState({ old: '', pw: '', pw2: '' });
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); };
-  const submit = () => {
-    if (f.pw.length < 6) return setErr('Mật khẩu mới cần ít nhất 6 ký tự.');
-    if (f.pw !== f.pw2) return setErr('Mật khẩu nhập lại không khớp.');
-    try { changePassword(f.old, f.pw); notify('Đã đổi mật khẩu'); navigation.goBack(); } catch (e) { setErr(e.message); }
-    return undefined;
+  const submit = async () => {
+    if (f.pw.length < 6) { setErr('Mật khẩu mới cần ít nhất 6 ký tự.'); return; }
+    if (f.pw !== f.pw2) { setErr('Mật khẩu nhập lại không khớp.'); return; }
+    setBusy(true);
+    // Chỉ báo thành công khi server đã lưu mật khẩu mới
+    try { await changePassword(f.old, f.pw); notify('Đã đổi mật khẩu'); navigation.goBack(); } catch (e) { setErr(e.message); setBusy(false); }
   };
   return (
     <Shell navigation={navigation} title="Đổi mật khẩu" subtitle="Nhập mật khẩu hiện tại và mật khẩu mới.">
@@ -129,7 +143,7 @@ export function ChangePasswordScreen({ navigation }) {
       <Field label="Mật khẩu mới" value={f.pw} onChangeText={set('pw')} secure helper="Ít nhất 6 ký tự" />
       <Field label="Nhập lại mật khẩu mới" value={f.pw2} onChangeText={set('pw2')} secure />
       <FormError text={err} />
-      <Button title="Đổi mật khẩu" onPress={submit} style={{ marginTop: 6 }} />
+      <Button title="Đổi mật khẩu" onPress={submit} loading={busy} style={{ marginTop: 6 }} />
     </Shell>
   );
 }

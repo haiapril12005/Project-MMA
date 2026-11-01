@@ -11,6 +11,7 @@ import FavoritesScreen from '../screens/FavoritesScreen';
 import CartScreen from '../screens/CartScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import DetailScreen from '../screens/DetailScreen';
+import OrdersScreen from '../screens/OrdersScreen';
 import { LoginScreen, RegisterScreen, EditProfileScreen, ChangePasswordScreen } from '../screens/AuthScreens';
 
 const Stack = createNativeStackNavigator();
@@ -48,6 +49,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Register" component={RegisterScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen name="Orders" component={OrdersScreen} />
     </Stack.Navigator>
   );
 }

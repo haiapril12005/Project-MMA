@@ -229,7 +229,7 @@ export default function DetailScreen({ route, navigation }) {
           icon="cart-outline"
           style={{ flex: 1 }}
           disabled={product.stock <= 0}
-          onPress={() => { if (!needLogin()) addToCart(product.id, qty); }}
+          onPress={() => { if (!needLogin()) addToCart(product.id, qty, color); }}
         />
       </View>
     </View>

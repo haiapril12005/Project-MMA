@@ -49,6 +49,11 @@ export default function ProfileScreen({ navigation }) {
         </Pressable>
       </View>
 
+      <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Mua sắm</Txt>
+      <View style={s.group}>
+        <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" onPress={() => navigation.navigate('Orders')} last />
+      </View>
+
       <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Thông tin giao hàng</Txt>
       <View style={s.group}>
         <Cell icon="phone-outline" title="Số điện thoại" value={user.phone || 'Chưa cập nhật'} />
