@@ -61,42 +61,6 @@ test('yêu cầu hủy đơn được kiểm tra phía server và người mua c
   assert.doesNotMatch(cancellationMigration, /for (insert|update|delete) to authenticated/i);
 });
 
-<<<<<<< HEAD
-test('mua ngay đặt đúng 1 sản phẩm qua hàm phía server và không đụng tới giỏ hàng', () => {
-  const buyNow = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611010001_buy_now.sql'), 'utf8');
-  assert.match(buyNow, /create or replace function public\.place_buy_now_order/i);
-  assert.match(buyNow, /security definer/i);
-  assert.match(buyNow, /p_quantity > v_product\.stock/i);
-  assert.match(buyNow, /PRODUCT_COLOR_INVALID/);
-  assert.doesNotMatch(buyNow, /cart_items/i);
-  assert.match(buyNow, /revoke all on function public\.place_buy_now_order/i);
-});
-
-test('đặt hàng trừ tồn kho có khóa dòng và hủy đơn thì hoàn kho đúng một lần', () => {
-  const stock = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611010002_stock_on_order.sql'), 'utf8');
-  assert.match(stock, /add column if not exists stock_deducted/i);
-  assert.match(stock, /create or replace function public\.place_order/i);
-  assert.match(stock, /create or replace function public\.place_buy_now_order/i);
-  assert.match(stock, /order by id\s+for update;/i);
-  assert.match(stock, /where id = p_product_id for update;/i);
-  assert.match(stock, /set stock = product\.stock - cart\.qty/i);
-  assert.match(stock, /set stock = stock - p_quantity/i);
-  assert.match(stock, /sum\(quantity\) as qty/i);
-  assert.match(stock, /new\.status = 'cancelled' and old\.status <> 'cancelled' and old\.stock_deducted/i);
-  assert.match(stock, /new\.stock_deducted := false/i);
-  assert.match(stock, /delete from public\.cart_items where user_id = v_user_id/i);
-});
-
-test('đơn còn chờ xác nhận được hủy ngay, đơn đã xác nhận vẫn phải chờ cửa hàng duyệt', () => {
-  const instant = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611020001_instant_cancel.sql'), 'utf8');
-  assert.match(instant, /create or replace function public\.request_order_cancellation/i);
-  assert.match(instant, /security definer/i);
-  assert.match(instant, /where id = p_order_id\s+for update/i);
-  assert.match(instant, /if v_order_status = 'pending_confirmation' then\s+update public\.order_cancellation_requests\s+set status = 'approved'/i);
-  assert.match(instant, /v_order_status not in \('pending_confirmation', 'confirmed'\)/i);
-  assert.match(instant, /revoke all on function public\.request_order_cancellation/i);
-  assert.doesNotMatch(instant, /update public\.orders/i);
-=======
 test('chỉ người mua có đơn đã giao mới được đánh giá và mọi ghi dữ liệu đi qua RPC', () => {
   assert.match(verifiedReviewsMigration, /create or replace function public\.can_review_product/i);
   assert.match(verifiedReviewsMigration, /customer_order\.status = 'delivered'/i);
@@ -140,5 +104,46 @@ test('mua lại chỉ nhận đơn đã giao, kiểm tra dữ liệu hiện tạ
   assert.match(reorderMigration, /'addedQuantity', v_added_quantity/i);
   assert.match(reorderMigration, /'issues', v_issues/i);
   assert.match(reorderMigration, /grant execute on function public\.reorder_delivered_order\(uuid\) to authenticated/i);
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
+});
+
+test('mua ngay đặt đúng 1 sản phẩm qua hàm phía server và không đụng tới giỏ hàng', () => {
+  const buyNow = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611020003_buy_now.sql'), 'utf8');
+  assert.match(buyNow, /create or replace function public\.place_buy_now_order/i);
+  assert.match(buyNow, /security definer/i);
+  assert.match(buyNow, /drop function if exists public\.place_buy_now_order\(bigint, text, integer, text, text, text, text\)/i);
+  assert.match(buyNow, /p_installation_date < v_today \+ 1/i);
+  assert.match(buyNow, /p_installation_time_slot not in \('08:00-12:00', '13:00-17:00'\)/i);
+  assert.match(buyNow, /where id = p_product_id for update;/i);
+  assert.match(buyNow, /set stock = stock - p_quantity/i);
+  assert.match(buyNow, /installation_note, stock_deducted/i);
+  assert.match(buyNow, /p_quantity > v_product\.stock/i);
+  assert.match(buyNow, /PRODUCT_COLOR_INVALID/);
+  assert.doesNotMatch(buyNow, /cart_items/i);
+  assert.match(buyNow, /revoke all on function public\.place_buy_now_order/i);
+});
+
+test('đặt hàng trừ tồn kho có khóa dòng và hủy đơn thì hoàn kho đúng một lần', () => {
+  const stock = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611020002_stock_on_order.sql'), 'utf8');
+  assert.match(stock, /add column if not exists stock_deducted/i);
+  assert.match(stock, /create or replace function public\.place_order/i);
+  assert.match(stock, /drop function if exists public\.place_order\(text, text, text, text\);/i);
+  assert.match(stock, /p_installation_date < v_today \+ 1/i);
+  assert.match(stock, /grant execute on function public\.place_order\(text, text, text, text, date, text, text\) to authenticated/i);
+  assert.match(stock, /order by id\s+for update;/i);
+  assert.match(stock, /set stock = product\.stock - cart\.qty/i);
+  assert.match(stock, /sum\(quantity\) as qty/i);
+  assert.match(stock, /new\.status = 'cancelled' and old\.status <> 'cancelled' and old\.stock_deducted/i);
+  assert.match(stock, /new\.stock_deducted := false/i);
+  assert.match(stock, /delete from public\.cart_items where user_id = v_user_id/i);
+});
+
+test('đơn còn chờ xác nhận được hủy ngay, đơn đã xác nhận vẫn phải chờ cửa hàng duyệt', () => {
+  const instant = fs.readFileSync(path.join(root, 'supabase', 'migrations', '202611020001_instant_cancel.sql'), 'utf8');
+  assert.match(instant, /create or replace function public\.request_order_cancellation/i);
+  assert.match(instant, /security definer/i);
+  assert.match(instant, /where id = p_order_id\s+for update/i);
+  assert.match(instant, /if v_order_status = 'pending_confirmation' then\s+update public\.order_cancellation_requests\s+set status = 'approved'/i);
+  assert.match(instant, /v_order_status not in \('pending_confirmation', 'confirmed'\)/i);
+  assert.match(instant, /revoke all on function public\.request_order_cancellation/i);
+  assert.doesNotMatch(instant, /update public\.orders/i);
 });

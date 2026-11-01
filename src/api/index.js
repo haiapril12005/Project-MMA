@@ -235,7 +235,7 @@ export const api = {
       return orderFromRow(row);
     },
     // Mua ngay: đặt đúng 1 sản phẩm, không dùng giỏ hàng
-    placeBuyNow: async ({ item, shipping, paymentMethod }) => {
+    placeBuyNow: async ({ item, shipping, paymentMethod, installation }) => {
       const orderId = unwrap(await supabase.rpc('place_buy_now_order', {
         p_product_id: Number(item.productId),
         p_selected_color: item.selectedColor || '',
@@ -244,6 +244,9 @@ export const api = {
         p_shipping_phone: shipping.phone,
         p_shipping_address: shipping.address,
         p_payment_method: paymentMethod,
+        p_installation_date: installation.date,
+        p_installation_time_slot: installation.timeSlot,
+        p_installation_note: installation.note || '',
       }));
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);

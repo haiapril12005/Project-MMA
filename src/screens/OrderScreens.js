@@ -28,11 +28,9 @@ const CANCELLATION_REASONS = [
 
 const cancellationReasonLabel = (key) => CANCELLATION_REASONS.find((item) => item.key === key)?.label || 'Lý do khác';
 
-<<<<<<< HEAD
 // Ghi chú database tự gắn khi đơn được hủy ngay lúc còn "Chờ xác nhận" (xem migration 202611020001_instant_cancel.sql)
 const AUTO_CANCEL_NOTE_PREFIX = 'Tự động hủy';
 const isAutoCancelled = (request) => request?.status === 'approved' && String(request.storeNote || '').startsWith(AUTO_CANCEL_NOTE_PREFIX);
-=======
 const reorderResultMessage = (result) => {
   const skipped = result.issues.filter((issue) => issue.addedQuantity === 0).length;
   const limited = result.issues.filter((issue) => issue.reason === 'quantity_limited').length;
@@ -46,7 +44,6 @@ const reorderResultMessage = (result) => {
   if (limited) details.push(`${limited} mục được giới hạn số lượng`);
   return `Đã thêm ${result.addedQuantity} sản phẩm vào giỏ${details.length ? `; ${details.join(', ')}` : ''}.`;
 };
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
 
 const CANCELLATION_STATUSES = {
   auto: { label: 'Đã hủy ngay', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle-outline' },
@@ -203,13 +200,9 @@ function CancelOrderModal({ visible, order, onClose, onSubmit }) {
 
 export function CheckoutScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-<<<<<<< HEAD
-  const { user, products, placeOrder } = useApp();
+  const { user, products, placeOrder, updateProfile } = useApp();
   // Có buyNow = đến từ nút "Mua ngay" ở trang chi tiết: chỉ đặt 1 món, không lấy giỏ hàng
   const buyNow = route?.params?.buyNow || null;
-=======
-  const { user, products, placeOrder, updateProfile } = useApp();
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
   const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', address: user?.address || '' });
   const [saveAsDefault, setSaveAsDefault] = useState(!user?.phone || !user?.address);
   const [installationDate, setInstallationDate] = useState(earliestInstallationDate());
@@ -255,15 +248,12 @@ export function CheckoutScreen({ route, navigation }) {
       const order = await placeOrder({
         shipping: { name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() },
         paymentMethod,
-<<<<<<< HEAD
-        buyNowItem: buyNow ? { productId: items[0].product.id, selectedColor: items[0].selectedColor, quantity: items[0].quantity } : null,
-=======
         installation: {
           date: installationDate,
           timeSlot: installationTimeSlot,
           note: installationNote.trim(),
         },
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
+        buyNowItem: buyNow ? { productId: items[0].product.id, selectedColor: items[0].selectedColor, quantity: items[0].quantity } : null,
       });
       if (saveAsDefault) {
         await updateProfile({ name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() });
@@ -556,12 +546,9 @@ export function OrderDetailScreen({ route, navigation }) {
 
   const history = order.statusHistory?.length ? order.statusHistory : [{ status: order.status, at: order.updatedAt || order.createdAt }];
   const cancellation = order.cancellationRequest;
-<<<<<<< HEAD
   // Đơn "Chờ xác nhận": hủy ngay (kể cả khi đang có yêu cầu cũ còn chờ duyệt). Đơn "Đã xác nhận": gửi yêu cầu.
   const instantCancel = order.status === 'pending_confirmation' && (!cancellation || cancellation.status === 'pending');
   const canRequestCancellation = instantCancel || (!cancellation && order.status === 'confirmed');
-=======
-  const canRequestCancellation = !cancellation && ['pending_confirmation', 'confirmed'].includes(order.status);
   const buyAgain = async () => {
     setReordering(true);
     try {
@@ -574,7 +561,6 @@ export function OrderDetailScreen({ route, navigation }) {
       setReordering(false);
     }
   };
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chi tiết đơn" subtitle={order.code} navigation={navigation} />

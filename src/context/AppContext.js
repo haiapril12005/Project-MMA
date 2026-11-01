@@ -331,17 +331,14 @@ export function AppProvider({ children }) {
   const cartCount = user ? user.cart.reduce((sum, item) => sum + item.quantity, 0) : 0;
 
   // ---------- Đơn hàng ----------
-<<<<<<< HEAD
+  // installation = { date, timeSlot, note }: lịch giao và lắp đặt, bắt buộc cho mọi đơn
   // buyNowItem = { productId, selectedColor, quantity }: "Mua ngay" chỉ đặt món này, giỏ hàng giữ nguyên
-  const placeOrder = async ({ shipping, paymentMethod, buyNowItem = null }) => {
-=======
-  const placeOrder = async ({ shipping, paymentMethod, installation }) => {
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
+  const placeOrder = async ({ shipping, paymentMethod, installation, buyNowItem = null }) => {
     const current = userRef.current;
     if (buyNowItem) {
       if (!current) throw new Error('Bạn cần đăng nhập để đặt hàng.');
       try {
-        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod });
+        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod, installation });
         setOrders((items) => [order, ...items]);
         refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
         return order;
@@ -350,13 +347,15 @@ export function AppProvider({ children }) {
         console.warn('[Mua ngay] place_buy_now_order lỗi:', e?.code, e?.message);
         const message = String(e?.message || '');
         if (e?.code === 'PGRST202' || message.includes('Could not find the function')) {
-          throw new Error('Database chưa có chức năng Mua ngay. Hãy chạy file supabase/migrations/202611010001_buy_now.sql trong Supabase SQL Editor.');
+          throw new Error('Database chưa có chức năng Mua ngay. Hãy chạy file supabase/migrations/202611020003_buy_now.sql trong Supabase SQL Editor.');
         }
         if (message.includes('CART_QUANTITY_INVALID')) throw new Error('Số lượng vượt quá hàng còn trong kho. Hãy giảm số lượng rồi thử lại.');
         if (message.includes('PRODUCT_NOT_FOUND')) throw new Error('Sản phẩm này đã ngừng bán.');
         if (message.includes('PRODUCT_COLOR_INVALID')) throw new Error('Màu đã chọn không còn bán, hãy chọn màu khác.');
         if (message.includes('SHIPPING_PHONE_INVALID')) throw new Error('Số điện thoại cần từ 9 đến 11 chữ số.');
         if (message.includes('SHIPPING_ADDRESS_INVALID')) throw new Error('Địa chỉ giao hàng cần ít nhất 10 ký tự.');
+        if (message.includes('INSTALLATION_DATE_INVALID')) throw new Error('Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.');
+        if (message.includes('INSTALLATION_TIME_SLOT_INVALID')) throw new Error('Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.');
         if (message.includes('AUTH_REQUIRED') || message.includes('JWT')) throw new Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.');
         throw new Error(`Không gửi được đơn hàng (${e?.code || 'lỗi kết nối'}). Vui lòng thử lại.`);
       }
@@ -369,19 +368,17 @@ export function AppProvider({ children }) {
       refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
       return order;
     } catch (e) {
-<<<<<<< HEAD
       console.warn('[Đặt hàng] place_order lỗi:', e?.code, e?.message);
-      if (String(e?.message || '').includes('CART_QUANTITY_INVALID')) {
+      const message = String(e?.message || '');
+      if (message.includes('CART_QUANTITY_INVALID')) {
         refreshProductsSilently();
         throw new Error('Có sản phẩm trong giỏ vượt quá số lượng còn trong kho (tính chung mọi màu). Hãy giảm số lượng rồi thử lại.');
-=======
-      const message = String(e?.message || '');
+      }
       if (message.includes('INSTALLATION_DATE_INVALID')) {
         throw new Error('Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.');
       }
       if (message.includes('INSTALLATION_TIME_SLOT_INVALID')) {
         throw new Error('Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.');
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
       }
       throw new Error('Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.');
     }
@@ -437,13 +434,8 @@ export function AppProvider({ children }) {
         products, loading, error, loadProducts, user, ready,
         login, register, resendConfirmation, logout, updateProfile, changePassword,
         favorites, isFav, toggleFavorite, clearFavorites,
-<<<<<<< HEAD
         addToCart, setQty, removeFromCart, clearCart, cartCount, maxQtyFor,
-        orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation,
-=======
-        addToCart, setQty, removeFromCart, clearCart, cartCount,
         orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation, reorderOrder,
->>>>>>> c975050bc207131daa2a52f5c89a9df69843d432
         toast, notify,
       }}
     >
