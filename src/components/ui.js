@@ -40,6 +40,7 @@ export function Button({ title, onPress, variant = 'primary', icon, size = 'md',
       onPress={onPress}
       disabled={off}
       accessibilityRole="button"
+      accessibilityLabel={title}
       style={({ pressed }) => [
         s.btn,
         { height: h, backgroundColor: pressed ? v.bgPressed : v.bg, borderColor: v.border, opacity: off ? 0.55 : 1, paddingHorizontal: size === 'sm' ? 16 : 22 },
@@ -174,11 +175,11 @@ export function EmptyState({ icon, title, text, action, onPress }) {
 export function QtyStepper({ value, min = 1, max = 99, onChange }) {
   return (
     <View style={s.stepper}>
-      <Pressable onPress={() => onChange(value - 1)} disabled={value <= min} hitSlop={6} style={[s.stepBtn, value <= min && { opacity: 0.35 }]} accessibilityLabel="Giảm số lượng">
+      <Pressable onPress={() => onChange(value - 1)} disabled={value <= min} hitSlop={6} style={[s.stepBtn, value <= min && { opacity: 0.35 }]} accessibilityRole="button" accessibilityLabel="Giảm số lượng">
         <Icon name="minus" size={18} />
       </Pressable>
       <Txt v="bodyStrong" style={{ minWidth: 28, textAlign: 'center' }}>{value}</Txt>
-      <Pressable onPress={() => onChange(value + 1)} disabled={value >= max} hitSlop={6} style={[s.stepBtn, value >= max && { opacity: 0.35 }]} accessibilityLabel="Tăng số lượng">
+      <Pressable onPress={() => onChange(value + 1)} disabled={value >= max} hitSlop={6} style={[s.stepBtn, value >= max && { opacity: 0.35 }]} accessibilityRole="button" accessibilityLabel="Tăng số lượng">
         <Icon name="plus" size={18} />
       </Pressable>
     </View>
