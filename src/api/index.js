@@ -28,6 +28,7 @@ const reviewFromRow = (row) => ({
   rating: Number(row.rating),
   comment: row.comment,
   createdAt: row.created_at,
+  verifiedPurchase: Boolean(row.verified_purchase),
 });
 
 const cancellationFromRow = (row) => (row ? {
@@ -42,6 +43,23 @@ const cancellationFromRow = (row) => (row ? {
   reviewedAt: row.reviewed_at,
   updatedAt: row.updated_at,
 } : null);
+
+const reorderFromData = (data) => ({
+  addedLines: Number(data?.addedLines || 0),
+  addedQuantity: Number(data?.addedQuantity || 0),
+  issues: (data?.issues || []).map((issue) => ({
+    productId: String(issue.productId),
+    name: issue.name,
+    reason: issue.reason,
+    requestedQuantity: Number(issue.requestedQuantity || 0),
+    addedQuantity: Number(issue.addedQuantity || 0),
+  })),
+  cart: (data?.cart || []).map((item) => ({
+    productId: String(item.productId),
+    selectedColor: item.selectedColor,
+    quantity: Number(item.quantity),
+  })),
+});
 
 const orderFromRow = (row) => {
   const cancellationRow = Array.isArray(row.order_cancellation_requests)
@@ -67,6 +85,11 @@ const orderFromRow = (row) => {
     phone: row.shipping_phone,
     address: row.shipping_address,
   },
+  installation: row.installation_date ? {
+    date: row.installation_date,
+    timeSlot: row.installation_time_slot,
+    note: row.installation_note || '',
+  } : null,
   paymentMethod: row.payment_method,
   paymentStatus: row.payment_status,
   status: row.status,
@@ -82,14 +105,6 @@ const orderFromRow = (row) => {
   cancellationRequest: cancellationFromRow(cancellationRow),
   });
 };
-
-const reviewPayload = (review) => ({
-  product_id: Number(review.productId),
-  user_id: review.userId,
-  user_name: review.userName,
-  rating: Number(review.rating),
-  comment: review.comment,
-});
 
 const orderSelect = `
   *,
@@ -187,21 +202,34 @@ export const api = {
       const rows = unwrap(await supabase.from('reviews').select('*').eq('product_id', Number(productId)).order('created_at', { ascending: false }));
       return rows.map(reviewFromRow);
     },
-    create: async (review) => reviewFromRow(unwrap(await supabase.from('reviews').insert(reviewPayload(review)).select().single())),
-    update: async (id, review) => reviewFromRow(unwrap(await supabase.from('reviews').update(reviewPayload(review)).eq('id', id).select().single())),
-    remove: async (id) => unwrap(await supabase.from('reviews').delete().eq('id', id)),
+    canReview: async (productId) => Boolean(unwrap(await supabase.rpc('can_review_product', {
+      p_product_id: Number(productId),
+    }))),
+    save: async ({ productId, rating, comment }) => {
+      const reviewId = unwrap(await supabase.rpc('save_verified_review', {
+        p_product_id: Number(productId),
+        p_rating: Number(rating),
+        p_comment: comment,
+      }));
+      const row = unwrap(await supabase.from('reviews').select('*').eq('id', reviewId).single());
+      return reviewFromRow(row);
+    },
+    remove: async (id) => unwrap(await supabase.rpc('delete_verified_review', { p_review_id: id })),
   },
   orders: {
     byUser: async (userId) => {
       const rows = unwrap(await supabase.from('orders').select(orderSelect).eq('user_id', userId).order('created_at', { ascending: false }));
       return rows.map(orderFromRow);
     },
-    place: async ({ shipping, paymentMethod }) => {
+    place: async ({ shipping, paymentMethod, installation }) => {
       const orderId = unwrap(await supabase.rpc('place_order', {
         p_shipping_name: shipping.name,
         p_shipping_phone: shipping.phone,
         p_shipping_address: shipping.address,
         p_payment_method: paymentMethod,
+        p_installation_date: installation.date,
+        p_installation_time_slot: installation.timeSlot,
+        p_installation_note: installation.note || '',
       }));
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);
@@ -229,5 +257,8 @@ export const api = {
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);
     },
+    reorder: async (orderId) => reorderFromData(unwrap(await supabase.rpc('reorder_delivered_order', {
+      p_order_id: orderId,
+    }))),
   },
 };
