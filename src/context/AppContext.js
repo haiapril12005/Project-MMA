@@ -1,191 +1,357 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api';
-import { FAVORITES_KEY, SESSION_KEY } from '../config';
-import { finalPrice } from '../utils';
 
 const Ctx = createContext(null);
+
 export const useApp = () => {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useApp phải được dùng bên trong <AppProvider>');
   return ctx;
 };
-const normProduct = (p) => ({ ...p, id: String(p.id), price: Number(p.price), percentOff: Number(p.percentOff || 0), stock: Number(p.stock ?? 99) });
-const normUser = (u) => ({ ...u, cart: u.cart || [] });
-const sameLine = (c, productId, color) =>
-  c.productId === productId && (c.color || null) === (color || null);
 
 export function AppProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUserState] = useState(null);
-  const [favorites, setFavorites] = useState([]); // mảng id sản phẩm, lưu AsyncStorage
+  const [favorites, setFavorites] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderError, setOrderError] = useState(null);
   const [ready, setReady] = useState(false);
-  const [toast, setToast] = useState(null); // { id, text }
+  const [toast, setToast] = useState(null);
   const userRef = useRef(null);
 
-  const setUser = (u) => { userRef.current = u; setUserState(u); };
-  // Cập nhật ngay trên máy, đồng bộ lên server (users) ở nền
-  const save = (next) => { setUser(next); api.users.update(next.id, next).catch(() => { }); };
-
+  const setUser = useCallback((next) => {
+    userRef.current = next;
+    setUserState(next);
+  }, []);
   const notify = useCallback((text) => setToast({ id: Date.now(), text }), []);
 
+  const clearAccount = useCallback(() => {
+    setUser(null);
+    setFavorites([]);
+    setOrders([]);
+    setOrderError(null);
+  }, [setUser]);
+
   const loadProducts = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
     try {
-      const list = await api.products();
-      setProducts(list.map((p) => ({ ...p, id: String(p.id), price: Number(p.price), percentOff: Number(p.percentOff || 0), stock: Number(p.stock ?? 99) })));
+      setProducts(await api.products());
     } catch (e) {
-      setError('Không tải được sản phẩm. Kiểm tra kết nối mạng hoặc BASE_URL trong src/config.js.');
-    } finally { setLoading(false); }
+      setError('Không tải được sản phẩm từ Supabase. Hãy kiểm tra kết nối và migration database.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  const loadOrders = useCallback(async (userId = userRef.current?.id) => {
+    if (!userId) {
+      setOrders([]);
+      return true;
+    }
+    setOrdersLoading(true);
+    setOrderError(null);
+    try {
+      setOrders(await api.orders.byUser(userId));
+      return true;
+    } catch (e) {
+      setOrderError('Không tải được đơn hàng. Vui lòng thử lại.');
+      return false;
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+  const loadAccount = useCallback(async (authUser) => {
+    const account = await api.account.get(authUser);
+    const { favorites: nextFavorites, ...nextUser } = account;
+    setUser(nextUser);
+    setFavorites(nextFavorites);
+    await loadOrders(nextUser.id);
+    return nextUser;
+  }, [loadOrders, setUser]);
+
   useEffect(() => {
+    let active = true;
     loadProducts();
-    (async () => {
+
+    const restoreSession = async () => {
       try {
-        const [id, favRaw] = await Promise.all([AsyncStorage.getItem(SESSION_KEY), AsyncStorage.getItem(FAVORITES_KEY)]);
-        if (favRaw) setFavorites(JSON.parse(favRaw));
-        if (id) {
-          const u = (await api.users.list()).find((x) => String(x.id) === id);
-          if (u) setUser(normUser(u));
-        }
-      } catch (e) { /* bỏ qua, coi như chưa đăng nhập */ }
-      setReady(true);
-    })();
-  }, [loadProducts]);
+        const { session } = await api.auth.getSession();
+        if (active && session?.user) await loadAccount(session.user);
+      } catch (e) {
+        if (active) clearAccount();
+      } finally {
+        if (active) setReady(true);
+      }
+    };
+    restoreSession();
 
-  // ---------- Đăng nhập ----------
-  const startSession = async (u) => { setUser(normUser(u)); await AsyncStorage.setItem(SESSION_KEY, String(u.id)); };
-
-  const login = async (email, password) => {
-    const u = (await api.users.list()).find((x) => x.email.toLowerCase() === email.trim().toLowerCase() && x.password === password);
-    if (!u) throw new Error('Email hoặc mật khẩu không đúng.');
-    await startSession(u);
-  };
-  const register = async ({ name, email, password }) => {
-    const users = await api.users.list();
-    if (users.some((x) => x.email.toLowerCase() === email.trim().toLowerCase())) throw new Error('Email này đã được đăng ký.');
-    const u = await api.users.create({ name: name.trim(), email: email.trim(), password, phone: '', address: '', cart: [] });
-    await startSession(u);
-  };
-  const logout = async () => { setUser(null); await AsyncStorage.removeItem(SESSION_KEY); };
-  const updateProfile = (patch) => save({ ...userRef.current, ...patch });
-  const changePassword = (oldPw, newPw) => {
-    if (userRef.current.password !== oldPw) throw new Error('Mật khẩu hiện tại không đúng.');
-    save({ ...userRef.current, password: newPw });
-  };
-
-  // ---------- Yêu thích (AsyncStorage, không cần đăng nhập) ----------
-  const persistFav = (next) => { setFavorites(next); AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(next)).catch(() => { }); };
-  const isFav = (id) => favorites.includes(String(id));
-  const toggleFavorite = (id) => {
-    const sid = String(id);
-    const adding = !favorites.includes(sid);
-    persistFav(adding ? [sid, ...favorites] : favorites.filter((x) => x !== sid));
-    notify(adding ? 'Đã lưu vào Yêu thích' : 'Đã bỏ khỏi Yêu thích');
-  };
-  const clearFavorites = () => { persistFav([]); notify('Đã xóa toàn bộ danh sách yêu thích'); };
-
-  // ---------- Giỏ hàng (lưu theo tài khoản) ----------
-  const addToCart = (id, qty = 1, color = null) => {
-    const u = userRef.current; const sid = String(id);
-    const product = products.find((p) => p.id === sid);
-    const stock = product?.stock ?? 99;
-    if (stock <= 0) { notify('Sản phẩm đã hết hàng'); return; }
-    const chosen = color ?? product?.color?.[0] ?? null; // default to first color (e.g. from Favorites)
-    const has = u.cart.find((c) => sameLine(c, sid, chosen));
-    const cart = has
-      ? u.cart.map((c) => (sameLine(c, sid, chosen) ? { ...c, quantity: Math.min(stock, c.quantity + qty) } : c))
-      : [...u.cart, { productId: sid, color: chosen, quantity: Math.min(stock, qty) }];
-    save({ ...u, cart });
-    notify('Đã thêm vào giỏ hàng');
-  };
-
-  const setQty = (id, qty, color = null) => {
-    const u = userRef.current; const sid = String(id);
-    const stock = products.find((p) => p.id === sid)?.stock ?? 99;
-    save({ ...u, cart: u.cart.map((c) => (sameLine(c, sid, color) ? { ...c, quantity: Math.max(1, Math.min(stock, qty)) } : c)) });
-  };
-
-  const removeFromCart = (id, color = null) =>
-    save({ ...userRef.current, cart: userRef.current.cart.filter((c) => !sameLine(c, String(id), color)) });
-
-  const clearCart = () => save({ ...userRef.current, cart: [] });
-
-  const placeOrder = async (lines, total) => {
-    const u = userRef.current;
-    const fresh = (await api.products()).map(normProduct); // latest stock, not the possibly stale local copy
-
-    // Total quantity per product (the same product in 2 colors counts together)
-    const need = {};
-    lines.forEach((l) => { need[l.productId] = (need[l.productId] || 0) + l.quantity; });
-
-    // 1. Check stock before creating anything
-    const problem = Object.keys(need).map((pid) => {
-      const p = fresh.find((x) => x.id === pid);
-      if (!p) return 'Có sản phẩm đã ngừng bán.';
-      return p.stock < need[pid] ? `"${p.name}" chỉ còn ${p.stock} sản phẩm.` : null;
-    }).find(Boolean);
-    if (problem) { setProducts(fresh); throw new Error(problem); }
-
-    // 2. Create the order (snapshot of items)
-    const order = await api.orders.create({
-      userId: u.id,
-      userName: u.name,
-      phone: u.phone || '',
-      address: u.address || '',
-      items: lines.map((l) => ({
-        productId: l.productId,
-        name: l.product.name,
-        uri: l.product.uri,
-        category: l.product.category,
-        color: l.color || null,
-        price: finalPrice(l.product),
-        quantity: l.quantity,
-      })),
-      total,
-      status: 'processing',
-      createdAt: new Date().toISOString(),
+    const { data: authListener } = api.auth.onChange((event, session) => {
+      if (!active || event === 'INITIAL_SESSION') return;
+      if (!session?.user) {
+        clearAccount();
+        return;
+      }
+      // Supabase yêu cầu callback Auth kết thúc nhanh; truy vấn account chạy ở lượt event kế tiếp.
+      setTimeout(() => {
+        if (!active) return;
+        loadAccount(session.user).catch(() => clearAccount());
+      }, 0);
     });
 
-    // 3. Subtract stock (one by one, see note below)
-    const updated = fresh.map((p) => (need[p.id] ? { ...p, stock: p.stock - need[p.id] } : p));
-    for (const pid of Object.keys(need)) {
-      // eslint-disable-next-line no-await-in-loop
-      await api.updateProduct(pid, updated.find((p) => p.id === pid));
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [clearAccount, loadAccount, loadProducts]);
+
+  // ---------- Đăng nhập và hồ sơ ----------
+  const login = async (email, password) => {
+    try {
+      const { user: authUser } = await api.auth.login(email.trim(), password);
+      await loadAccount(authUser);
+    } catch (e) {
+      const error = new Error(
+        e.code === 'email_not_confirmed'
+          ? 'Tài khoản chưa xác nhận email. Hãy mở email Supabase đã gửi rồi bấm liên kết xác nhận.'
+          : 'Email hoặc mật khẩu không đúng.',
+      );
+      error.code = e.code || 'login_failed';
+      throw error;
     }
-    setProducts(updated);
-    clearCart();
-    return order;
   };
 
-  const cancelOrder = async (order) => {
-    await api.orders.update(order.id, { ...order, status: 'cancelled' });
-
-    // Give the stock back
-    const back = {};
-    order.items.forEach((i) => { back[i.productId] = (back[i.productId] || 0) + i.quantity; });
-    const fresh = (await api.products()).map(normProduct);
-    const updated = fresh.map((p) => (back[p.id] ? { ...p, stock: p.stock + back[p.id] } : p));
-    for (const pid of Object.keys(back)) {
-      const p = updated.find((x) => x.id === pid);
-      // eslint-disable-next-line no-await-in-loop
-      if (p) await api.updateProduct(pid, p);
+  const register = async ({ name, email, password }) => {
+    try {
+      const { user: authUser, session } = await api.auth.register({ name, email: email.trim(), password });
+      if (session?.user) await loadAccount(session.user);
+      return { needsEmailConfirmation: Boolean(authUser && !session) };
+    } catch (e) {
+      if (String(e.message).toLowerCase().includes('already')) throw new Error('Email này đã được đăng ký.');
+      throw new Error('Không tạo được tài khoản. Vui lòng kiểm tra email và thử lại.');
     }
-    setProducts(updated);
   };
-  const cartCount = user ? user.cart.reduce((s, c) => s + c.quantity, 0) : 0;
+
+  const logout = async () => {
+    await api.auth.logout();
+    clearAccount();
+  };
+
+  const resendConfirmation = async (email) => {
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) throw new Error('Nhập email hợp lệ để gửi lại xác nhận.');
+    try {
+      await api.auth.resendConfirmation(email);
+      return true;
+    } catch (e) {
+      if (e.code === 'over_email_send_rate_limit') {
+        throw new Error('Bạn đã yêu cầu email quá nhanh. Vui lòng chờ vài phút rồi thử lại.');
+      }
+      throw new Error('Chưa gửi lại được email xác nhận. Vui lòng thử lại sau.');
+    }
+  };
+
+  const updateProfile = async (patch) => {
+    const current = userRef.current;
+    if (!current) return false;
+    try {
+      await api.account.updateProfile(current.id, patch);
+      setUser({ ...current, ...patch });
+      return true;
+    } catch (e) {
+      notify('Không cập nhật được thông tin. Vui lòng thử lại.');
+      return false;
+    }
+  };
+
+  const changePassword = async (oldPassword, newPassword) => {
+    const current = userRef.current;
+    if (!current) return false;
+    try {
+      await api.auth.changePassword({ email: current.email, oldPassword, newPassword });
+      return true;
+    } catch (e) {
+      throw new Error('Mật khẩu hiện tại không đúng hoặc phiên đăng nhập đã hết hạn.');
+    }
+  };
+
+  // ---------- Yêu thích (lưu theo tài khoản Supabase) ----------
+  const isFav = (id) => favorites.includes(String(id));
+
+  const toggleFavorite = async (id) => {
+    const current = userRef.current;
+    if (!current) {
+      notify('Đăng nhập để lưu sản phẩm yêu thích');
+      return false;
+    }
+    const productId = String(id);
+    const adding = !favorites.includes(productId);
+    const previous = favorites;
+    const next = adding ? [productId, ...favorites] : favorites.filter((item) => item !== productId);
+    setFavorites(next);
+    try {
+      if (adding) await api.favorites.add(current.id, productId);
+      else await api.favorites.remove(current.id, productId);
+      notify(adding ? 'Đã lưu vào Yêu thích' : 'Đã bỏ khỏi Yêu thích');
+      return true;
+    } catch (e) {
+      setFavorites(previous);
+      notify('Không đồng bộ được danh sách yêu thích. Vui lòng thử lại.');
+      return false;
+    }
+  };
+
+  const clearFavorites = async () => {
+    const current = userRef.current;
+    if (!current) return false;
+    const previous = favorites;
+    setFavorites([]);
+    try {
+      await api.favorites.clear(current.id);
+      notify('Đã xóa toàn bộ danh sách yêu thích');
+      return true;
+    } catch (e) {
+      setFavorites(previous);
+      notify('Không xóa được danh sách yêu thích. Vui lòng thử lại.');
+      return false;
+    }
+  };
+
+  // ---------- Giỏ hàng (lưu theo tài khoản Supabase) ----------
+  const saveCart = async (nextCart, operation, failureText) => {
+    const current = userRef.current;
+    if (!current) return false;
+    const previous = current;
+    const next = { ...current, cart: nextCart };
+    setUser(next);
+    try {
+      await operation();
+      return true;
+    } catch (e) {
+      if (userRef.current === next) setUser(previous);
+      notify(failureText);
+      return false;
+    }
+  };
+
+  const addToCart = async (id, qty = 1, selectedColor = '') => {
+    const current = userRef.current;
+    const productId = String(id);
+    const product = products.find((item) => item.id === productId);
+    if (!current || !product) {
+      notify(current ? 'Không tìm thấy sản phẩm' : 'Đăng nhập để thêm sản phẩm vào giỏ');
+      return false;
+    }
+    const stock = product.stock ?? 99;
+    if (stock <= 0) {
+      notify('Sản phẩm đang tạm hết hàng');
+      return false;
+    }
+    const color = selectedColor || product.color?.[0] || '';
+    const sameLine = (item) => item.productId === productId && item.selectedColor === color;
+    const existing = current.cart.find(sameLine);
+    const quantity = Math.min(stock, (existing?.quantity || 0) + Math.max(1, qty));
+    if (existing && quantity === existing.quantity) {
+      notify(`Chỉ còn ${stock} sản phẩm`);
+      return false;
+    }
+    const cart = existing
+      ? current.cart.map((item) => (sameLine(item) ? { ...item, quantity } : item))
+      : [...current.cart, { productId, selectedColor: color, quantity }];
+    const ok = await saveCart(
+      cart,
+      () => api.cart.add({ userId: current.id, productId, selectedColor: color, quantity }),
+      'Không thêm được vào giỏ. Vui lòng thử lại.',
+    );
+    if (ok) notify('Đã thêm vào giỏ hàng');
+    return ok;
+  };
+
+  const setQty = async (id, selectedColor, qty) => {
+    const current = userRef.current;
+    if (!current) return false;
+    const productId = String(id);
+    const product = products.find((item) => item.id === productId);
+    const stock = product?.stock ?? 99;
+    const color = selectedColor || product?.color?.[0] || '';
+    const quantity = Math.max(1, Math.min(stock, qty));
+    const cart = current.cart.map((item) => (
+      item.productId === productId && item.selectedColor === color ? { ...item, quantity } : item
+    ));
+    return saveCart(
+      cart,
+      () => api.cart.setQty({ userId: current.id, productId, selectedColor: color, quantity }),
+      'Không cập nhật được số lượng. Vui lòng thử lại.',
+    );
+  };
+
+  const removeFromCart = async (id, selectedColor = '') => {
+    const current = userRef.current;
+    if (!current) return false;
+    const productId = String(id);
+    const product = products.find((item) => item.id === productId);
+    const color = selectedColor || product?.color?.[0] || '';
+    const cart = current.cart.filter((item) => !(item.productId === productId && item.selectedColor === color));
+    return saveCart(
+      cart,
+      () => api.cart.remove({ userId: current.id, productId, selectedColor: color }),
+      'Không xóa được sản phẩm. Vui lòng thử lại.',
+    );
+  };
+
+  const clearCart = async () => {
+    const current = userRef.current;
+    if (!current) return false;
+    return saveCart(current.cart.length ? [] : current.cart, () => api.cart.clear(current.id), 'Không xóa được giỏ hàng. Vui lòng thử lại.');
+  };
+
+  const cartCount = user ? user.cart.reduce((sum, item) => sum + item.quantity, 0) : 0;
+
+  // ---------- Đơn hàng ----------
+  const placeOrder = async ({ shipping, paymentMethod }) => {
+    const current = userRef.current;
+    if (!current || !current.cart.length) throw new Error('Giỏ hàng đang trống.');
+    try {
+      const order = await api.orders.place({ shipping, paymentMethod });
+      setOrders((items) => [order, ...items]);
+      setUser({ ...current, cart: [] });
+      return order;
+    } catch (e) {
+      throw new Error('Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.');
+    }
+  };
+
+  const requestOrderCancellation = async ({ orderId, reasonCode, reasonDetail }) => {
+    if (!userRef.current) throw new Error('Bạn cần đăng nhập để gửi yêu cầu hủy đơn.');
+    try {
+      const updatedOrder = await api.orders.requestCancellation({ orderId, reasonCode, reasonDetail });
+      setOrders((items) => items.map((item) => (item.id === updatedOrder.id ? updatedOrder : item)));
+      notify('Đã gửi yêu cầu hủy đơn. Cửa hàng sẽ xem xét và phản hồi.');
+      return updatedOrder;
+    } catch (e) {
+      const message = String(e?.message || '');
+      if (message.includes('CANCELLATION_REQUEST_ALREADY_EXISTS')) {
+        throw new Error('Đơn hàng này đã có yêu cầu hủy.');
+      }
+      if (message.includes('ORDER_CANNOT_BE_CANCELLED')) {
+        throw new Error('Đơn đã chuyển sang giai đoạn không thể yêu cầu hủy.');
+      }
+      throw new Error('Chưa gửi được yêu cầu hủy đơn. Vui lòng thử lại.');
+    }
+  };
 
   return (
     <Ctx.Provider
       value={{
         products, loading, error, loadProducts, user, ready,
-        login, register, logout, updateProfile, changePassword,
+        login, register, resendConfirmation, logout, updateProfile, changePassword,
         favorites, isFav, toggleFavorite, clearFavorites,
         addToCart, setQty, removeFromCart, clearCart, cartCount,
-        toast, notify, placeOrder, cancelOrder,
+        orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation,
+        toast, notify,
       }}
     >
       {children}

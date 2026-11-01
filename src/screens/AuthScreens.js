@@ -31,25 +31,42 @@ function Shell({ title, subtitle, image, children, navigation }) {
 }
 
 const FormError = ({ text }) => (text ? <View style={s.formError}><Txt v="small" color={colors.danger}>{text}</Txt></View> : null);
+const FormNotice = ({ text }) => (text ? <View style={s.formNotice}><Txt v="small" color={colors.success}>{text}</Txt></View> : null);
 
-export function LoginScreen({ navigation }) {
-  const { login } = useApp();
-  const [email, setEmail] = useState('');
+export function LoginScreen({ navigation, route }) {
+  const { login, resendConfirmation } = useApp();
+  const [email, setEmail] = useState(route.params?.email || '');
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
+  const [notice, setNotice] = useState(route.params?.notice || '');
+  const [needsConfirmation, setNeedsConfirmation] = useState(Boolean(route.params?.needsConfirmation));
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
   const submit = async () => {
     if (!email.trim() || !pw) { setErr('Nhập email và mật khẩu để tiếp tục.'); return; }
-    setBusy(true); setErr('');
-    try { await login(email, pw); navigation.goBack(); } catch (e) { setErr(e.message); setBusy(false); }
+    setBusy(true); setErr(''); setNotice('');
+    try { await login(email, pw); navigation.goBack(); } catch (e) {
+      setErr(e.message);
+      setNeedsConfirmation(e.code === 'email_not_confirmed');
+      setBusy(false);
+    }
+  };
+  const resend = async () => {
+    setResending(true); setErr(''); setNotice('');
+    try {
+      await resendConfirmation(email);
+      setNotice('Đã gửi lại email xác nhận. Hãy kiểm tra cả hộp thư Spam/Thư rác.');
+    } catch (e) { setErr(e.message); }
+    setResending(false);
   };
   return (
     <Shell navigation={navigation} image title="Đăng nhập" subtitle="Tiếp tục chọn nội thất cho ngôi nhà của bạn.">
       <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="ban@email.com" />
       <Field label="Mật khẩu" value={pw} onChangeText={setPw} secure placeholder="Ít nhất 6 ký tự" onSubmitEditing={submit} />
+      <FormNotice text={notice} />
       <FormError text={err} />
       <Button title="Đăng nhập" onPress={submit} loading={busy} />
-      <Button title="Dùng tài khoản demo" variant="soft" onPress={() => { setEmail('demo@furworld.vn'); setPw('123456'); setErr(''); }} />
+      {needsConfirmation && <Button title="Gửi lại email xác nhận" variant="soft" onPress={resend} loading={resending} />}
       <Pressable onPress={() => navigation.replace('Register')} style={{ alignSelf: 'center', padding: 8 }}>
         <Txt v="small" color={colors.inkSoft}>Chưa có tài khoản? <Txt v="small" color={colors.primary} style={{ textDecorationLine: 'underline' }}>Đăng ký</Txt></Txt>
       </Pressable>
@@ -58,7 +75,7 @@ export function LoginScreen({ navigation }) {
 }
 
 export function RegisterScreen({ navigation }) {
-  const { register } = useApp();
+  const { register, notify } = useApp();
   const [f, setF] = useState({ name: '', email: '', pw: '', pw2: '' });
   const [errs, setErrs] = useState({});
   const [err, setErr] = useState('');
@@ -73,7 +90,20 @@ export function RegisterScreen({ navigation }) {
     setErrs(e);
     if (Object.keys(e).length) return;
     setBusy(true); setErr('');
-    try { await register({ name: f.name, email: f.email, password: f.pw }); navigation.goBack(); } catch (x) { setErr(x.message); setBusy(false); }
+    try {
+      const result = await register({ name: f.name, email: f.email, password: f.pw });
+      setBusy(false);
+      if (result.needsEmailConfirmation) {
+        notify('Đã tạo tài khoản. Hãy xác nhận email trước khi đăng nhập.');
+        navigation.replace('Login', {
+          email: f.email.trim(),
+          needsConfirmation: true,
+          notice: 'Đăng ký thành công. Supabase đã gửi liên kết xác nhận đến email của bạn.',
+        });
+      } else {
+        navigation.goBack();
+      }
+    } catch (x) { setErr(x.message); setBusy(false); }
   };
   return (
     <Shell navigation={navigation} image title="Tạo tài khoản" subtitle="Chỉ mất một phút để bắt đầu mua sắm.">
@@ -94,12 +124,14 @@ export function EditProfileScreen({ navigation }) {
   const { user, updateProfile, notify } = useApp();
   const [f, setF] = useState({ name: user.name, phone: user.phone || '', address: user.address || '' });
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const set = (k) => (v) => setF({ ...f, [k]: v });
-  const submit = () => {
+  const submit = async () => {
     if (!f.name.trim()) { setErr('Tên không được để trống.'); return; }
-    updateProfile({ name: f.name.trim(), phone: f.phone.trim(), address: f.address.trim() });
-    notify('Đã lưu thông tin');
-    navigation.goBack();
+    setBusy(true);
+    const ok = await updateProfile({ name: f.name.trim(), phone: f.phone.trim(), address: f.address.trim() });
+    setBusy(false);
+    if (ok) { notify('Đã lưu thông tin'); navigation.goBack(); }
   };
   return (
     <Shell navigation={navigation} title="Sửa thông tin" subtitle="Thông tin này dùng để giao hàng và lắp đặt.">
@@ -107,7 +139,7 @@ export function EditProfileScreen({ navigation }) {
       <Field label="Họ và tên" value={f.name} onChangeText={set('name')} error={err} />
       <Field label="Số điện thoại" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" placeholder="0901 234 567" />
       <Field label="Địa chỉ giao hàng" value={f.address} onChangeText={set('address')} multiline placeholder="Số nhà, đường, phường, quận" />
-      <Button title="Lưu thay đổi" onPress={submit} style={{ marginTop: 6 }} />
+      <Button title="Lưu thay đổi" onPress={submit} loading={busy} style={{ marginTop: 6 }} />
     </Shell>
   );
 }
@@ -116,11 +148,17 @@ export function ChangePasswordScreen({ navigation }) {
   const { changePassword, notify } = useApp();
   const [f, setF] = useState({ old: '', pw: '', pw2: '' });
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); };
-  const submit = () => {
+  const submit = async () => {
     if (f.pw.length < 6) return setErr('Mật khẩu mới cần ít nhất 6 ký tự.');
     if (f.pw !== f.pw2) return setErr('Mật khẩu nhập lại không khớp.');
-    try { changePassword(f.old, f.pw); notify('Đã đổi mật khẩu'); navigation.goBack(); } catch (e) { setErr(e.message); }
+    setBusy(true);
+    try {
+      const ok = await changePassword(f.old, f.pw);
+      setBusy(false);
+      if (ok) { notify('Đã đổi mật khẩu'); navigation.goBack(); }
+    } catch (e) { setErr(e.message); setBusy(false); }
     return undefined;
   };
   return (
@@ -129,7 +167,7 @@ export function ChangePasswordScreen({ navigation }) {
       <Field label="Mật khẩu mới" value={f.pw} onChangeText={set('pw')} secure helper="Ít nhất 6 ký tự" />
       <Field label="Nhập lại mật khẩu mới" value={f.pw2} onChangeText={set('pw2')} secure />
       <FormError text={err} />
-      <Button title="Đổi mật khẩu" onPress={submit} style={{ marginTop: 6 }} />
+      <Button title="Đổi mật khẩu" onPress={submit} loading={busy} style={{ marginTop: 6 }} />
     </Shell>
   );
 }
@@ -141,4 +179,5 @@ const s = StyleSheet.create({
   bodyOverlap: { marginTop: -28, paddingTop: 28, backgroundColor: colors.bg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet },
   back: { position: 'absolute', left: SCREEN_PADDING - 4 },
   formError: { backgroundColor: '#F6E4DF', borderRadius: radius.input, paddingHorizontal: 14, paddingVertical: 10 },
+  formNotice: { backgroundColor: '#E2EEE7', borderRadius: radius.input, paddingHorizontal: 14, paddingVertical: 10 },
 });

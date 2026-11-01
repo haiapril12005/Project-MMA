@@ -1,5 +1,4 @@
 import { Alert, Platform } from 'react-native';
-import { emitConfirm } from './confirmBus';
 
 // Danh mục hiển thị ở trang chủ (icon thuộc bộ MaterialCommunityIcons)
 export const CATEGORIES = [
@@ -15,6 +14,30 @@ export const SORTS = [
   { key: 'priceDesc', label: 'Giá cao trước', icon: 'sort-descending' },
   { key: 'priceAsc', label: 'Giá thấp trước', icon: 'sort-ascending' },
 ];
+
+export const PAYMENT_METHODS = [
+  { key: 'cod', label: 'Thanh toán khi nhận hàng', icon: 'cash', note: 'Thanh toán bằng tiền mặt hoặc chuyển khoản khi nhận hàng.' },
+  { key: 'bank_transfer', label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
+];
+
+export const ORDER_STATUSES = {
+  pending_confirmation: { label: 'Chờ xác nhận', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
+  confirmed: { label: 'Đã xác nhận', color: '#47708A', bg: '#E1EDF3', icon: 'check-circle-outline' },
+  preparing: { label: 'Đang chuẩn bị', color: '#79652F', bg: '#F2ECD8', icon: 'package-variant-closed' },
+  shipping: { label: 'Đang giao', color: '#356B58', bg: '#DDEDE6', icon: 'truck-delivery-outline' },
+  delivered: { label: 'Đã giao', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
+  cancelled: { label: 'Đã hủy', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
+};
+
+export const ORDER_FLOW = ['pending_confirmation', 'confirmed', 'preparing', 'shipping', 'delivered'];
+
+export const paymentLabel = (key) => PAYMENT_METHODS.find((p) => p.key === key)?.label || 'Chưa xác định';
+export const orderStatus = (key) => ORDER_STATUSES[key] || ORDER_STATUSES.pending_confirmation;
+
+export const formatDateTime = (value) => {
+  if (!value) return '';
+  return new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+};
 
 // Màu sắc sản phẩm -> ô màu hiển thị ở trang chi tiết
 export const SWATCHES = {
@@ -35,17 +58,11 @@ export const norm = (s = '') =>
 export const brandsOf = (list) => Array.from(new Set(list.map((p) => p.brand))).sort((a, b) => a.localeCompare(b, 'vi'));
 
 // Lọc theo danh mục, thương hiệu, từ khóa; mặc định sắp xếp giá giảm dần
-export function applyFilters(list, { q = '', cat = 'Tất cả', brand = null, sort = 'priceDesc', range = 'all', deal = false }) {
+export function applyFilters(list, { q = '', cat = 'Tất cả', brand = null, sort = 'priceDesc' }) {
   const nq = norm(q);
-  const r = PRICE_RANGES.find((x) => x.key === range) || PRICE_RANGES[0];
-  const out = list.filter((p) => {
-    const price = finalPrice(p);
-    return (cat === 'Tất cả' || p.category === cat)
-      && (!brand || p.brand === brand)
-      && (!nq || norm(p.name).includes(nq) || norm(p.brand).includes(nq))
-      && price >= r.min && price < r.max
-      && (!deal || p.percentOff > 0);
-  });
+  const out = list.filter(
+    (p) => (cat === 'Tất cả' || p.category === cat) && (!brand || p.brand === brand) && (!nq || norm(p.name).includes(nq) || norm(p.brand).includes(nq))
+  );
   const dir = sort === 'priceAsc' ? 1 : -1;
   return out.sort((a, b) => dir * (finalPrice(a) - finalPrice(b)));
 }
@@ -58,26 +75,9 @@ export function greeting(date = new Date()) {
   return 'Chào buổi tối';
 }
 
-export const ORDER_STATUS = {
-  processing: { label: 'Đang xử lý', color: '#985333', bg: '#F2E1D4' },
-  cancelled: { label: 'Đã hủy', color: '#99423A', bg: '#F3E1DC' },
-};
-
-export const PRICE_RANGES = [
-  { key: 'all', label: 'Mọi mức giá', min: 0, max: Infinity },
-  { key: 'u5', label: 'Dưới 5 triệu', min: 0, max: 5000000 },
-  { key: '5-15', label: '5 – 15 triệu', min: 5000000, max: 15000000 },
-  { key: '15-30', label: '15 – 30 triệu', min: 15000000, max: 30000000 },
-  { key: 'o30', label: 'Trên 30 triệu', min: 30000000, max: Infinity },
-];
-
 // Hộp thoại xác nhận chạy được cả trên điện thoại lẫn trình duyệt
 // (Alert.alert có nhiều nút không hoạt động trên web)
 export function confirmAction({ title, message, confirmText = 'Đồng ý', destructive = false, onConfirm }) {
-  // Ưu tiên thanh xác nhận tự thiết kế (chạy trên cả web và điện thoại)
-  if (emitConfirm({ title, message, confirmText, destructive, onConfirm })) return;
-
-  // Dự phòng nếu <ConfirmDialog /> chưa được gắn vào App.js
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-alert
     if (window.confirm(`${title}\n\n${message}`)) onConfirm();

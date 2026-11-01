@@ -20,7 +20,8 @@
       "backgroundColor": "#F6F0E9"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-status-bar"
     ]
   }
 }

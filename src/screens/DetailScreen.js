@@ -28,7 +28,7 @@ export default function DetailScreen({ route, navigation }) {
 
   useEffect(() => {
     let active = true;
-    api.reviews.byProduct(route.params.id).then((list) => active && setReviews(list)).catch(() => { });
+    api.reviews.byProduct(route.params.id).then((list) => active && setReviews(list)).catch(() => {});
     return () => { active = false; };
   }, [route.params.id]);
   useEffect(() => { setRating(mine ? mine.rating : 5); setComment(mine ? mine.comment : ''); }, [mine?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -111,7 +111,7 @@ export default function DetailScreen({ route, navigation }) {
               <Txt v="bodyStrong" style={{ marginBottom: 10 }}>Màu sắc<Txt v="body" color={colors.inkSoft}>{`  ${color}`}</Txt></Txt>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 {product.color.map((c) => (
-                  <Pressable key={c} onPress={() => setColor(c)} accessibilityLabel={c} accessibilityState={{ selected: color === c }} style={[s.swatchRing, color === c && { borderColor: colors.primary }]}>
+                  <Pressable key={c} onPress={() => setColor(c)} accessibilityRole="button" accessibilityLabel={c} accessibilityState={{ selected: color === c }} style={[s.swatchRing, color === c && { borderColor: colors.primary }]}>
                     <View style={[s.swatch, { backgroundColor: SWATCHES[c] || colors.sunken }]} />
                   </Pressable>
                 ))}

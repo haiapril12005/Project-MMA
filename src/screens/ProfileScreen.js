@@ -8,7 +8,7 @@ import { Button, Icon, Txt } from '../components/ui';
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, logout, cartCount, favorites } = useApp();
+  const { user, logout, cartCount, favorites, orders } = useApp();
 
   if (!user) {
     return (
@@ -39,11 +39,11 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       <View style={s.stats}>
-        <Pressable style={s.stat} onPress={() => navigation.navigate('Favorites')}>
+        <Pressable style={s.stat} onPress={() => navigation.navigate('Favorites')} accessibilityRole="button" accessibilityLabel={`${favorites.length} sản phẩm yêu thích`}>
           <Txt v="title" color={colors.primary}>{favorites.length}</Txt>
           <Txt v="caption" color={colors.inkSoft}>Yêu thích</Txt>
         </Pressable>
-        <Pressable style={s.stat} onPress={() => navigation.navigate('Cart')}>
+        <Pressable style={s.stat} onPress={() => navigation.navigate('Cart')} accessibilityRole="button" accessibilityLabel={`${cartCount} sản phẩm trong giỏ`}>
           <Txt v="title" color={colors.primary}>{cartCount}</Txt>
           <Txt v="caption" color={colors.inkSoft}>Trong giỏ</Txt>
         </Pressable>
@@ -57,7 +57,7 @@ export default function ProfileScreen({ navigation }) {
 
       <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Cài đặt</Txt>
       <View style={s.group}>
-        <Cell icon="package-variant-closed" title="Đơn hàng của tôi" onPress={() => navigation.navigate('Orders')} />
+        <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" value={`${orders.length} đơn hàng`} onPress={() => navigation.navigate('OrderHistory')} />
         <Cell icon="account-edit-outline" title="Sửa thông tin" onPress={() => navigation.navigate('EditProfile')} />
         <Cell icon="lock-outline" title="Đổi mật khẩu" onPress={() => navigation.navigate('ChangePassword')} last />
       </View>
@@ -69,7 +69,7 @@ export default function ProfileScreen({ navigation }) {
 
 function Cell({ icon, title, value, onPress, last }) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [s.cell, !last && s.cellLine, pressed && { backgroundColor: colors.sunken }]}>
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={onPress ? title : undefined} style={({ pressed }) => [s.cell, !last && s.cellLine, pressed && { backgroundColor: colors.sunken }]}>
       <View style={s.cellIcon}><Icon name={icon} size={20} color={colors.primary} /></View>
       <View style={{ flex: 1 }}>
         <Txt v="bodyStrong" style={{ fontSize: 14 }}>{title}</Txt>
