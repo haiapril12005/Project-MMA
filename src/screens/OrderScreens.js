@@ -5,8 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
 import {
+  earliestInstallationDate,
+  formatDateOnly,
   formatDateTime,
   formatVND,
+  INSTALLATION_TIME_SLOTS,
+  isValidISODate,
   orderStatus,
   PAYMENT_METHODS,
   paymentLabel,
@@ -23,6 +27,20 @@ const CANCELLATION_REASONS = [
 ];
 
 const cancellationReasonLabel = (key) => CANCELLATION_REASONS.find((item) => item.key === key)?.label || 'Lý do khác';
+
+const reorderResultMessage = (result) => {
+  const skipped = result.issues.filter((issue) => issue.addedQuantity === 0).length;
+  const limited = result.issues.filter((issue) => issue.reason === 'quantity_limited').length;
+  if (!result.addedQuantity) {
+    if (result.issues.some((issue) => issue.reason === 'color_unavailable')) return 'Không thể mua lại vì màu đã chọn trong đơn cũ không còn.';
+    if (result.issues.some((issue) => ['out_of_stock', 'cart_at_limit'].includes(issue.reason))) return 'Không còn sản phẩm nào có thể thêm vào giỏ.';
+    return 'Không có sản phẩm phù hợp để mua lại.';
+  }
+  const details = [];
+  if (skipped) details.push(`bỏ qua ${skipped} mục không còn phù hợp`);
+  if (limited) details.push(`${limited} mục được giới hạn số lượng`);
+  return `Đã thêm ${result.addedQuantity} sản phẩm vào giỏ${details.length ? `; ${details.join(', ')}` : ''}.`;
+};
 
 const CANCELLATION_STATUSES = {
   pending: { label: 'Đang chờ duyệt hủy', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
@@ -172,8 +190,12 @@ function CancelOrderModal({ visible, order, onClose, onSubmit }) {
 
 export function CheckoutScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, products, placeOrder } = useApp();
+  const { user, products, placeOrder, updateProfile } = useApp();
   const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', address: user?.address || '' });
+  const [saveAsDefault, setSaveAsDefault] = useState(!user?.phone || !user?.address);
+  const [installationDate, setInstallationDate] = useState(earliestInstallationDate());
+  const [installationTimeSlot, setInstallationTimeSlot] = useState('');
+  const [installationNote, setInstallationNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
@@ -199,6 +221,13 @@ export function CheckoutScreen({ navigation }) {
     if (!form.name.trim()) nextErrors.name = 'Nhập tên người nhận.';
     if (phoneDigits.length < 9 || phoneDigits.length > 11) nextErrors.phone = 'Số điện thoại cần từ 9 đến 11 chữ số.';
     if (form.address.trim().length < 10) nextErrors.address = 'Nhập địa chỉ giao hàng đầy đủ.';
+    if (!isValidISODate(installationDate) || installationDate < earliestInstallationDate()) {
+      nextErrors.installationDate = `Chọn ngày từ ${formatDateOnly(earliestInstallationDate())}.`;
+    }
+    if (!INSTALLATION_TIME_SLOTS.some((slot) => slot.key === installationTimeSlot)) {
+      nextErrors.installationTimeSlot = 'Chọn khung giờ giao và lắp đặt.';
+    }
+    if (installationNote.trim().length > 500) nextErrors.installationNote = 'Ghi chú không được vượt quá 500 ký tự.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -207,7 +236,15 @@ export function CheckoutScreen({ navigation }) {
       const order = await placeOrder({
         shipping: { name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() },
         paymentMethod,
+        installation: {
+          date: installationDate,
+          timeSlot: installationTimeSlot,
+          note: installationNote.trim(),
+        },
       });
+      if (saveAsDefault) {
+        await updateProfile({ name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() });
+      }
       navigation.replace('OrderSuccess', { id: order.id });
     } catch (e) {
       setFormError(e.message || 'Không gửi được đơn hàng. Vui lòng thử lại.');
@@ -233,6 +270,69 @@ export function CheckoutScreen({ navigation }) {
           <Field label="Tên người nhận" value={form.name} onChangeText={set('name')} error={errors.name} placeholder="Nguyễn Văn An" />
           <Field label="Số điện thoại" value={form.phone} onChangeText={set('phone')} error={errors.phone} keyboardType="phone-pad" placeholder="0901 234 567" />
           <Field label="Địa chỉ giao hàng" value={form.address} onChangeText={set('address')} error={errors.address} multiline placeholder="Số nhà, đường, phường, quận, tỉnh/thành" />
+          <Pressable
+            onPress={() => setSaveAsDefault((value) => !value)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: saveAsDefault }}
+            style={s.saveAddressRow}
+          >
+            <Icon name={saveAsDefault ? 'checkbox-marked' : 'checkbox-blank-outline'} size={22} color={saveAsDefault ? colors.primary : colors.inkMuted} />
+            <View style={{ flex: 1 }}>
+              <Txt v="bodyStrong" style={{ fontSize: 14 }}>Lưu làm thông tin nhận hàng mặc định</Txt>
+              <Txt v="caption" color={colors.inkMuted}>Lần đặt hàng sau sẽ tự động điền thông tin này.</Txt>
+            </View>
+          </Pressable>
+        </View>
+
+        <SectionTitle icon="calendar-clock" title="Lịch giao và lắp đặt" />
+        <View style={s.card}>
+          <Field
+            label="Ngày mong muốn (YYYY-MM-DD)"
+            value={installationDate}
+            onChangeText={(value) => { setInstallationDate(value); setErrors((current) => ({ ...current, installationDate: undefined })); }}
+            error={errors.installationDate}
+            helper={`Sớm nhất: ${formatDateOnly(earliestInstallationDate())}`}
+            placeholder={earliestInstallationDate()}
+            keyboardType={Platform.OS === 'web' ? undefined : 'number-pad'}
+            {...(Platform.OS === 'web' ? { type: 'date', min: earliestInstallationDate() } : {})}
+          />
+          <Txt v="bodyStrong" style={{ fontSize: 14 }}>Khung giờ lắp đặt</Txt>
+          <View style={{ gap: 10 }}>
+            {INSTALLATION_TIME_SLOTS.map((slot) => {
+              const selected = installationTimeSlot === slot.key;
+              return (
+                <Pressable
+                  key={slot.key}
+                  onPress={() => { setInstallationTimeSlot(slot.key); setErrors((current) => ({ ...current, installationTimeSlot: undefined })); }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  style={[s.scheduleOption, selected && s.scheduleOptionOn]}
+                >
+                  <View style={[s.paymentIcon, selected && { backgroundColor: colors.primary }]}><Icon name={slot.icon} color={selected ? colors.onPrimary : colors.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Txt v="bodyStrong">{slot.label}</Txt>
+                    <Txt v="small" color={colors.inkSoft}>{slot.note}</Txt>
+                  </View>
+                  <Icon name={selected ? 'radiobox-marked' : 'radiobox-blank'} color={selected ? colors.primary : colors.inkMuted} />
+                </Pressable>
+              );
+            })}
+          </View>
+          {!!errors.installationTimeSlot && <Txt v="small" color={colors.danger}>{errors.installationTimeSlot}</Txt>}
+          <Field
+            label="Ghi chú lắp đặt (không bắt buộc)"
+            value={installationNote}
+            onChangeText={(value) => { setInstallationNote(value); setErrors((current) => ({ ...current, installationNote: undefined })); }}
+            error={errors.installationNote}
+            helper={`${installationNote.length}/500 ký tự`}
+            maxLength={500}
+            multiline
+            placeholder="Ví dụ: gọi trước khi đến, chung cư cần đăng ký thang máy..."
+          />
+          <View style={s.scheduleNotice}>
+            <Icon name="information-outline" size={20} color={colors.primary} />
+            <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Đây là thời gian mong muốn. Cửa hàng sẽ liên hệ xác nhận lịch trước khi giao.</Txt>
+          </View>
         </View>
 
         <SectionTitle icon="credit-card-outline" title="Phương thức thanh toán" />
@@ -306,6 +406,7 @@ export function OrderSuccessScreen({ route, navigation }) {
         <View style={s.divider} />
         <SummaryLine label="Trạng thái" value={orderStatus(order.status).label} color={orderStatus(order.status).color} />
         <SummaryLine label="Thanh toán" value={paymentLabel(order.paymentMethod)} />
+        {!!order.installation && <SummaryLine label="Lịch lắp đặt" value={`${formatDateOnly(order.installation.date)} · ${order.installation.timeSlot}`} />}
         <SummaryLine label="Tổng cộng" value={formatVND(order.total)} color={colors.primary} />
       </View>
 
@@ -326,7 +427,22 @@ export function OrderSuccessScreen({ route, navigation }) {
 
 export function OrderHistoryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, orders, ordersLoading, orderError, loadOrders } = useApp();
+  const { user, orders, ordersLoading, orderError, loadOrders, reorderOrder, notify } = useApp();
+  const [reorderingId, setReorderingId] = useState(null);
+
+  const buyAgain = async (event, orderId) => {
+    event?.stopPropagation?.();
+    setReorderingId(orderId);
+    try {
+      const result = await reorderOrder(orderId);
+      notify(reorderResultMessage(result));
+      if (result.addedQuantity > 0) navigation.navigate('Tabs', { screen: 'Cart' });
+    } catch (e) {
+      notify(e.message || 'Chưa thể mua lại đơn hàng.');
+    } finally {
+      setReorderingId(null);
+    }
+  };
 
   useFocusEffect(useCallback(() => {
     if (user?.id) loadOrders(user.id);
@@ -379,6 +495,18 @@ export function OrderHistoryScreen({ navigation }) {
                 <Txt v="small" color={colors.inkSoft}>{item.items.reduce((sum, i) => sum + i.quantity, 0)} sản phẩm</Txt>
                 <Txt v="price" color={colors.primary}>{formatVND(item.total)}</Txt>
               </View>
+              {item.status === 'delivered' && (
+                <Button
+                  title="Mua lại"
+                  icon="cart-plus"
+                  size="sm"
+                  variant="outline"
+                  loading={reorderingId === item.id}
+                  disabled={Boolean(reorderingId && reorderingId !== item.id)}
+                  onPress={(event) => buyAgain(event, item.id)}
+                  style={{ alignSelf: 'flex-end', marginTop: 12 }}
+                />
+              )}
             </Pressable>
           )}
         />
@@ -389,8 +517,9 @@ export function OrderHistoryScreen({ navigation }) {
 
 export function OrderDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { orders, requestOrderCancellation } = useApp();
+  const { orders, requestOrderCancellation, reorderOrder, notify } = useApp();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const order = orders.find((o) => o.id === String(route.params?.id));
 
   if (!order) {
@@ -405,6 +534,18 @@ export function OrderDetailScreen({ route, navigation }) {
   const history = order.statusHistory?.length ? order.statusHistory : [{ status: order.status, at: order.updatedAt || order.createdAt }];
   const cancellation = order.cancellationRequest;
   const canRequestCancellation = !cancellation && ['pending_confirmation', 'confirmed'].includes(order.status);
+  const buyAgain = async () => {
+    setReordering(true);
+    try {
+      const result = await reorderOrder(order.id);
+      notify(reorderResultMessage(result));
+      if (result.addedQuantity > 0) navigation.navigate('Tabs', { screen: 'Cart' });
+    } catch (e) {
+      notify(e.message || 'Chưa thể mua lại đơn hàng.');
+    } finally {
+      setReordering(false);
+    }
+  };
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chi tiết đơn" subtitle={order.code} navigation={navigation} />
@@ -413,6 +554,16 @@ export function OrderDetailScreen({ route, navigation }) {
           <StatusPill value={order.status} style={{ alignSelf: 'center' }} />
           <Txt v="small" color={colors.inkSoft} style={{ marginTop: 8 }}>Cập nhật {formatDateTime(order.updatedAt || order.createdAt)}</Txt>
         </View>
+
+        {order.status === 'delivered' && (
+          <View style={s.reorderBox}>
+            <View style={{ flex: 1 }}>
+              <Txt v="bodyStrong">Bạn muốn mua lại đơn này?</Txt>
+              <Txt v="small" color={colors.inkSoft}>Sản phẩm hợp lệ sẽ được thêm vào giỏ theo màu cũ và giá hiện tại.</Txt>
+            </View>
+            <Button title="Mua lại" icon="cart-plus" size="sm" loading={reordering} onPress={buyAgain} />
+          </View>
+        )}
 
         {!!cancellation && (
           <>
@@ -463,6 +614,21 @@ export function OrderDetailScreen({ route, navigation }) {
           <InfoRow icon="phone-outline" label="Số điện thoại" value={order.shipping.phone} />
           <InfoRow icon="map-marker-outline" label="Địa chỉ" value={order.shipping.address} last />
         </View>
+
+        {!!order.installation && (
+          <>
+            <SectionTitle icon="calendar-clock" title="Lịch giao và lắp đặt" />
+            <View style={s.card}>
+              <InfoRow icon="calendar" label="Ngày mong muốn" value={formatDateOnly(order.installation.date)} />
+              <InfoRow icon="clock-outline" label="Khung giờ" value={order.installation.timeSlot} last={!order.installation.note} />
+              {!!order.installation.note && <InfoRow icon="note-text-outline" label="Ghi chú" value={order.installation.note} last />}
+              <View style={s.scheduleNotice}>
+                <Icon name="information-outline" size={20} color={colors.primary} />
+                <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Cửa hàng sẽ liên hệ xác nhận lịch trước khi giao.</Txt>
+              </View>
+            </View>
+          </>
+        )}
 
         <SectionTitle icon="package-variant-closed" title={`Sản phẩm (${order.items.length})`} />
         <View style={s.card}>
@@ -527,6 +693,10 @@ const s = StyleSheet.create({
   payment: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: colors.line, borderRadius: radius.card, padding: 14, backgroundColor: colors.surface },
   paymentOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   paymentIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
+  saveAddressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: colors.bg, paddingTop: 12 },
+  scheduleOption: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: colors.line, borderRadius: radius.card, padding: 12, backgroundColor: colors.surface },
+  scheduleOptionOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  scheduleNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.primarySoft, borderRadius: radius.input, padding: 12 },
   checkoutItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 2 },
   checkoutImage: { width: 62, height: 62, borderRadius: radius.img - 4 },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.bg, paddingBottom: 14 },
@@ -541,6 +711,7 @@ const s = StyleSheet.create({
   orderImage: { width: 58, height: 58, borderRadius: radius.img - 4 },
   heroStatus: { backgroundColor: colors.surface, borderRadius: radius.card, padding: 18, alignItems: 'center' },
   cancelBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8EAE6', borderRadius: radius.card, padding: 16, marginTop: 14 },
+  reorderBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.primarySoft, borderRadius: radius.card, padding: 16, marginTop: 14 },
   timelineRow: { flexDirection: 'row', gap: 12 },
   timelineDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   timelineLine: { width: 2, flex: 1, minHeight: 24, opacity: 0.35 },

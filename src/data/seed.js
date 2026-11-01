@@ -106,35 +106,7 @@ Object.entries(CATALOG).forEach(([category, items]) =>
   })
 );
 
-const NAMES = ['Ngọc Hân', 'Đức Huy', 'Bảo Trâm', 'Thanh Tùng', 'Mai Chi', 'Gia Khánh', 'Phương Linh', 'Quang Vinh'];
-const COMMENTS = {
-  5: ['Hàng đẹp y như ảnh, giao và lắp đặt rất cẩn thận.', 'Chất lượng tốt hơn mong đợi, cả nhà đều thích.', 'Màu ấm, hợp với phòng khách nhà mình.'],
-  4: ['Sản phẩm chắc chắn, giao hàng chậm hơn hẹn một ngày.', 'Đẹp, màu ngoài thực tế nhạt hơn ảnh một chút.'],
-  3: ['Tạm ổn so với giá, đóng gói có thể kỹ hơn.'],
-  2: ['Có vài vết xước nhỏ, shop đã hỗ trợ đổi.'],
-  1: ['Giao sai màu, mất thời gian đổi trả.'],
-};
-const PATTERN = [5, 4, 5, 3, 5, 4, 2, 5, 4, 1, 5, 4];
-
+// Đánh giá không được seed. Chỉ người mua có đơn đã giao mới tạo được đánh giá thật.
 const reviews = [];
-products.forEach((p) => {
-  const id = Number(p.id);
-  const count = 3 + (id % 3);
-  for (let k = 0; k < count; k += 1) {
-    const rating = PATTERN[(id * 5 + k * 7) % PATTERN.length];
-    const list = COMMENTS[rating];
-    const month = String(1 + ((id + k * 3) % 9)).padStart(2, '0');
-    const day = String(10 + ((id + k) % 18));
-    reviews.push({
-      id: `r${p.id}-${k}`,
-      productId: p.id,
-      userId: `seed${(id + k) % NAMES.length}`,
-      userName: NAMES[(id + k) % NAMES.length],
-      rating,
-      comment: list[(id + k) % list.length],
-      createdAt: `2026-${month}-${day}T09:00:00.000Z`,
-    });
-  }
-});
 
 module.exports = { products, reviews };
