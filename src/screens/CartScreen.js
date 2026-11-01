@@ -4,15 +4,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
 import { confirmAction, finalPrice, formatVND } from '../utils';
-import { Button, EmptyState, IconButton, ProductImage, QtyStepper, Txt } from '../components/ui';
+import { Button, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Txt } from '../components/ui';
 
 export default function CartScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, products, setQty, removeFromCart, clearCart } = useApp();
+  const { user, products, setQty, removeFromCart, clearCart, maxQtyFor } = useApp();
   const items = (user?.cart || []).map((c) => {
     const product = products.find((p) => p.id === c.productId);
-    return { ...c, selectedColor: c.selectedColor || product?.color?.[0] || '', product };
+    const selectedColor = c.selectedColor || product?.color?.[0] || '';
+    // maxQty: số lượng tối đa còn đặt được cho dòng này (tồn kho tính chung mọi màu)
+    return { ...c, selectedColor, product, maxQty: product ? maxQtyFor(product.id, selectedColor) : 0 };
   }).filter((i) => i.product);
+  // Có dòng vượt tồn kho (do kho vừa giảm) thì chưa cho sang bước đặt hàng
+  const overStock = items.some((i) => i.quantity > i.maxQty);
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
   const total = items.reduce((sum, i) => sum + finalPrice(i.product) * i.quantity, 0);
   const saved = subtotal - total;
@@ -55,7 +59,7 @@ export default function CartScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={<EmptyState icon="sofa-outline" title="Giỏ hàng đang trống" text="Chọn vài món nội thất cho ngôi nhà của bạn nhé." action="Mua sắm ngay" onPress={() => navigation.navigate('Home')} />}
-        renderItem={({ item: { product: p, quantity, selectedColor } }) => (
+        renderItem={({ item: { product: p, quantity, selectedColor, maxQty } }) => (
           <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
               <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
@@ -66,12 +70,15 @@ export default function CartScreen({ navigation }) {
                   <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20 }}>{p.name}</Txt>
                   <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>
                   {!!selectedColor && <Txt v="caption" color={colors.inkSoft}>Màu: {selectedColor}</Txt>}
+                  {quantity > maxQty && (
+                    <Txt v="caption" color={colors.danger}>{maxQty > 0 ? `Chỉ còn đặt được ${maxQty}, hãy giảm số lượng` : 'Đã hết hàng, hãy xóa khỏi giỏ'}</Txt>
+                  )}
                 </Pressable>
                 <IconButton icon="trash-can-outline" color={colors.inkSoft} bg="transparent" size={32} iconSize={20} onPress={() => removeFromCart(p.id, selectedColor)} label="Xóa khỏi giỏ" />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
                 <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(finalPrice(p) * quantity)}</Txt>
-                <QtyStepper value={quantity} max={p.stock} onChange={(v) => setQty(p.id, selectedColor, v)} />
+                <QtyStepper value={quantity} max={maxQty} onChange={(v) => setQty(p.id, selectedColor, v)} />
               </View>
             </View>
           </View>
@@ -87,7 +94,13 @@ export default function CartScreen({ navigation }) {
             <Txt v="subtitle">Tổng cộng</Txt>
             <Txt v="display" color={colors.primary} style={{ fontSize: 22, lineHeight: 30 }}>{formatVND(total)}</Txt>
           </View>
-          <Button title="Tiếp tục đặt hàng" icon="arrow-right" onPress={() => navigation.navigate('Checkout')} />
+          {overStock && (
+            <View style={s.warn}>
+              <Icon name="alert-circle-outline" size={18} color={colors.danger} />
+              <Txt v="small" color={colors.danger} style={{ flex: 1 }}>Có món vượt số lượng còn trong kho. Giảm số lượng để tiếp tục.</Txt>
+            </View>
+          )}
+          <Button title="Tiếp tục đặt hàng" icon="arrow-right" disabled={overStock} onPress={() => navigation.navigate('Checkout')} />
         </View>
       )}
     </View>
@@ -110,4 +123,5 @@ const s = StyleSheet.create({
   thumb: { width: 88, height: 88, borderRadius: radius.img - 2 },
   summary: { backgroundColor: colors.surface, paddingHorizontal: SCREEN_PADDING, paddingTop: 18, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card, ...shadow, shadowOffset: { width: 0, height: -4 } },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, marginBottom: 14 },
+  warn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
 });

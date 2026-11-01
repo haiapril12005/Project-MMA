@@ -54,6 +54,12 @@ export default function DetailScreen({ route, navigation }) {
 
   const fav = isFav(product.id);
   const needLogin = () => { if (!user) { navigation.navigate('Login'); return true; } return false; };
+  // Mua ngay: sang màn đặt hàng với đúng sản phẩm, màu và số lượng đang chọn; giỏ hàng không bị thay đổi
+  const buyNow = () => {
+    if (needLogin()) return;
+    const quantity = Math.min(qty, product.stock);
+    navigation.navigate('Checkout', { buyNow: { productId: product.id, selectedColor: color || product.color?.[0] || '', quantity } });
+  };
   const jumpToReviews = () => scrollRef.current?.scrollTo({ y: Math.max(0, reviewsY.current - insets.top - 64), animated: true });
 
   const submit = async () => {
@@ -118,6 +124,15 @@ export default function DetailScreen({ route, navigation }) {
               </View>
             </View>
           )}
+
+          {/* Số lượng: dùng chung cho "Thêm vào giỏ" và "Mua ngay" */}
+          <View style={s.qtyRow}>
+            <View style={{ flex: 1 }}>
+              <Txt v="bodyStrong">Số lượng</Txt>
+              <Txt v="small" color={product.stock > 0 ? colors.inkSoft : colors.danger}>{product.stock > 0 ? `Còn ${product.stock} sản phẩm` : 'Tạm hết hàng'}</Txt>
+            </View>
+            <QtyStepper value={qty} max={Math.max(1, product.stock)} onChange={setQty} />
+          </View>
 
           {/* Thông số dạng lưới 2 cột */}
           <View style={s.specGrid}>
@@ -223,13 +238,19 @@ export default function DetailScreen({ route, navigation }) {
 
       {/* Thanh mua hàng cố định */}
       <View style={[s.buyBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <QtyStepper value={qty} max={product.stock} onChange={setQty} />
         <Button
           title="Thêm vào giỏ"
-          icon="cart-outline"
+          variant="soft"
           style={{ flex: 1 }}
           disabled={product.stock <= 0}
           onPress={() => { if (!needLogin()) addToCart(product.id, qty, color); }}
+        />
+        <Button
+          title={product.stock > 0 ? 'Mua ngay' : 'Hết hàng'}
+          icon="lightning-bolt"
+          style={{ flex: 1 }}
+          disabled={product.stock <= 0}
+          onPress={buyNow}
         />
       </View>
     </View>
@@ -243,6 +264,7 @@ const s = StyleSheet.create({
   offPill: { backgroundColor: colors.primarySoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
   swatchRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(74, 58, 48, 0.12)' },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 22, padding: 14, backgroundColor: colors.surface, borderRadius: radius.card },
   specGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 22, marginHorizontal: -5 },
   spec: { width: '50%', padding: 5 },
   perks: { marginTop: 18, gap: 10, backgroundColor: colors.surface, borderRadius: radius.card, padding: 16 },
@@ -254,5 +276,5 @@ const s = StyleSheet.create({
   writeBox: { marginTop: 24, backgroundColor: colors.surface, borderRadius: radius.card, padding: 18 },
   textarea: { minHeight: 96, borderWidth: 1, borderColor: colors.line, borderRadius: radius.input, padding: 14, fontFamily: fonts.regular, fontSize: 15, color: colors.ink, textAlignVertical: 'top', backgroundColor: colors.bg },
   topBar: { position: 'absolute', left: SCREEN_PADDING - 4, right: SCREEN_PADDING - 4, flexDirection: 'row', justifyContent: 'space-between' },
-  buyBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: SCREEN_PADDING, paddingTop: 14, backgroundColor: colors.surface, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card, ...shadow, shadowOffset: { width: 0, height: -4 } },
+  buyBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: SCREEN_PADDING, paddingTop: 14, backgroundColor: colors.surface, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card, ...shadow, shadowOffset: { width: 0, height: -4 } },
 });

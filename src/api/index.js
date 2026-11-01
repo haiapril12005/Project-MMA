@@ -206,6 +206,20 @@ export const api = {
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);
     },
+    // Mua ngay: đặt đúng 1 sản phẩm, không dùng giỏ hàng
+    placeBuyNow: async ({ item, shipping, paymentMethod }) => {
+      const orderId = unwrap(await supabase.rpc('place_buy_now_order', {
+        p_product_id: Number(item.productId),
+        p_selected_color: item.selectedColor || '',
+        p_quantity: item.quantity,
+        p_shipping_name: shipping.name,
+        p_shipping_phone: shipping.phone,
+        p_shipping_address: shipping.address,
+        p_payment_method: paymentMethod,
+      }));
+      const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
+      return orderFromRow(row);
+    },
     requestCancellation: async ({ orderId, reasonCode, reasonDetail }) => {
       unwrap(await supabase.rpc('request_order_cancellation', {
         p_order_id: orderId,

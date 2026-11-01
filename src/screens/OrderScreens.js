@@ -24,7 +24,12 @@ const CANCELLATION_REASONS = [
 
 const cancellationReasonLabel = (key) => CANCELLATION_REASONS.find((item) => item.key === key)?.label || 'Lý do khác';
 
+// Ghi chú database tự gắn khi đơn được hủy ngay lúc còn "Chờ xác nhận" (xem migration 202611020001_instant_cancel.sql)
+const AUTO_CANCEL_NOTE_PREFIX = 'Tự động hủy';
+const isAutoCancelled = (request) => request?.status === 'approved' && String(request.storeNote || '').startsWith(AUTO_CANCEL_NOTE_PREFIX);
+
 const CANCELLATION_STATUSES = {
+  auto: { label: 'Đã hủy ngay', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle-outline' },
   pending: { label: 'Đang chờ duyệt hủy', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
   approved: { label: 'Cửa hàng đã chấp nhận', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle-outline' },
   rejected: { label: 'Cửa hàng đã từ chối', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
@@ -67,8 +72,8 @@ function StatusPill({ value, style }) {
   );
 }
 
-function CancellationPill({ value, style }) {
-  const info = CANCELLATION_STATUSES[value] || CANCELLATION_STATUSES.pending;
+function CancellationPill({ value, auto = false, style }) {
+  const info = auto ? CANCELLATION_STATUSES.auto : (CANCELLATION_STATUSES[value] || CANCELLATION_STATUSES.pending);
   return (
     <View style={[s.statusPill, { backgroundColor: info.bg }, style]}>
       <Icon name={info.icon} size={15} color={info.color} />
@@ -79,6 +84,8 @@ function CancellationPill({ value, style }) {
 
 function CancelOrderModal({ visible, order, onClose, onSubmit }) {
   const insets = useSafeAreaInsets();
+  // Đơn chưa được cửa hàng xác nhận thì hủy ngay, không cần chờ duyệt
+  const instant = order?.status === 'pending_confirmation';
   const [reasonCode, setReasonCode] = useState('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [error, setError] = useState('');
@@ -125,13 +132,17 @@ function CancelOrderModal({ visible, order, onClose, onSubmit }) {
           <View style={s.modalHandle} />
           <View style={s.modalHead}>
             <View style={{ flex: 1 }}>
-              <Txt v="title">Yêu cầu hủy đơn</Txt>
+              <Txt v="title">{instant ? 'Hủy đơn hàng' : 'Yêu cầu hủy đơn'}</Txt>
               <Txt v="small" color={colors.inkSoft}>{order?.code}</Txt>
             </View>
             <IconButton icon="close" onPress={() => !busy && onClose()} label="Đóng" bg={colors.sunken} />
           </View>
 
-          <Txt v="small" color={colors.inkSoft} style={{ marginBottom: 12 }}>Cửa hàng sẽ xem xét yêu cầu. Đơn chỉ được hủy sau khi cửa hàng chấp nhận.</Txt>
+          <Txt v="small" color={colors.inkSoft} style={{ marginBottom: 12 }}>
+            {instant
+              ? 'Đơn chưa được cửa hàng xác nhận nên sẽ được hủy ngay. Chọn lý do để cửa hàng hiểu nhu cầu của bạn.'
+              : 'Đơn đã được cửa hàng xác nhận. Cửa hàng sẽ xem xét yêu cầu, đơn chỉ được hủy sau khi cửa hàng chấp nhận.'}
+          </Txt>
           <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 330 }} contentContainerStyle={{ gap: 8 }}>
             {CANCELLATION_REASONS.map((reason) => {
               const selected = reasonCode === reason.key;
@@ -155,14 +166,14 @@ function CancelOrderModal({ visible, order, onClose, onSubmit }) {
             value={reasonDetail}
             onChangeText={(value) => { setReasonDetail(value); setError(''); }}
             multiline
-            placeholder="Nhập thông tin để cửa hàng xem xét"
+            placeholder={instant ? 'Nhập thêm nếu muốn' : 'Nhập thông tin để cửa hàng xem xét'}
             helper={`${reasonDetail.length}/1000 ký tự`}
             style={{ marginTop: 14 }}
           />
           {!!error && <Txt v="small" color={colors.danger} style={{ marginTop: 8 }}>{error}</Txt>}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
             <Button title="Để sau" variant="outline" onPress={onClose} disabled={busy} style={{ flex: 1 }} />
-            <Button title="Gửi yêu cầu" loading={busy} onPress={submit} style={{ flex: 1 }} />
+            <Button title={instant ? 'Hủy đơn' : 'Gửi yêu cầu'} variant={instant ? 'danger' : 'primary'} loading={busy} onPress={submit} style={{ flex: 1 }} />
           </View>
         </View>
       </View>
@@ -170,19 +181,21 @@ function CancelOrderModal({ visible, order, onClose, onSubmit }) {
   );
 }
 
-export function CheckoutScreen({ navigation }) {
+export function CheckoutScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { user, products, placeOrder } = useApp();
+  // Có buyNow = đến từ nút "Mua ngay" ở trang chi tiết: chỉ đặt 1 món, không lấy giỏ hàng
+  const buyNow = route?.params?.buyNow || null;
   const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', address: user?.address || '' });
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const items = useMemo(() => (user?.cart || []).map((c) => {
-    const product = products.find((p) => p.id === c.productId);
+  const items = useMemo(() => (buyNow ? [buyNow] : (user?.cart || [])).map((c) => {
+    const product = products.find((p) => p.id === String(c.productId));
     return product ? { ...c, product, selectedColor: c.selectedColor || product.color?.[0] || '' } : null;
-  }).filter(Boolean), [user?.cart, products]);
+  }).filter(Boolean), [buyNow, user?.cart, products]);
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
   const total = items.reduce((sum, i) => sum + Math.round(i.product.price * (1 - i.product.percentOff)) * i.quantity, 0);
   const discount = subtotal - total;
@@ -207,6 +220,7 @@ export function CheckoutScreen({ navigation }) {
       const order = await placeOrder({
         shipping: { name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() },
         paymentMethod,
+        buyNowItem: buyNow ? { productId: items[0].product.id, selectedColor: items[0].selectedColor, quantity: items[0].quantity } : null,
       });
       navigation.replace('OrderSuccess', { id: order.id });
     } catch (e) {
@@ -219,14 +233,14 @@ export function CheckoutScreen({ navigation }) {
     return (
       <View style={s.screen}>
         <ScreenHeader title="Đặt hàng" navigation={navigation} />
-        <EmptyState icon="cart-outline" title="Không có sản phẩm để đặt" text="Giỏ hàng của bạn đang trống." action="Quay lại mua sắm" onPress={() => navigation.navigate('Tabs', { screen: 'Home' })} />
+        <EmptyState icon="cart-outline" title="Không có sản phẩm để đặt" text={buyNow ? 'Sản phẩm này hiện không còn bán.' : 'Giỏ hàng của bạn đang trống.'} action="Quay lại mua sắm" onPress={() => navigation.navigate('Tabs', { screen: 'Home' })} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScreenHeader title="Đặt hàng" subtitle={`${items.length} sản phẩm`} navigation={navigation} />
+      <ScreenHeader title={buyNow ? 'Mua ngay' : 'Đặt hàng'} subtitle={buyNow ? 'Chỉ đặt sản phẩm này, giỏ hàng giữ nguyên' : `${items.length} sản phẩm`} navigation={navigation} />
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: 190 + insets.bottom }}>
         <SectionTitle icon="map-marker-outline" title="Thông tin nhận hàng" />
         <View style={s.card}>
@@ -365,7 +379,7 @@ export function OrderHistoryScreen({ navigation }) {
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <StatusPill value={item.status} />
-                  {!!item.cancellationRequest && <CancellationPill value={item.cancellationRequest.status} />}
+                  {!!item.cancellationRequest && <CancellationPill value={item.cancellationRequest.status} auto={isAutoCancelled(item.cancellationRequest)} />}
                 </View>
               </View>
               <View style={s.orderPreview}>
@@ -404,7 +418,9 @@ export function OrderDetailScreen({ route, navigation }) {
 
   const history = order.statusHistory?.length ? order.statusHistory : [{ status: order.status, at: order.updatedAt || order.createdAt }];
   const cancellation = order.cancellationRequest;
-  const canRequestCancellation = !cancellation && ['pending_confirmation', 'confirmed'].includes(order.status);
+  // Đơn "Chờ xác nhận": hủy ngay (kể cả khi đang có yêu cầu cũ còn chờ duyệt). Đơn "Đã xác nhận": gửi yêu cầu.
+  const instantCancel = order.status === 'pending_confirmation' && (!cancellation || cancellation.status === 'pending');
+  const canRequestCancellation = instantCancel || (!cancellation && order.status === 'confirmed');
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chi tiết đơn" subtitle={order.code} navigation={navigation} />
@@ -418,12 +434,12 @@ export function OrderDetailScreen({ route, navigation }) {
           <>
             <SectionTitle icon="file-document-edit-outline" title="Yêu cầu hủy đơn" />
             <View style={s.card}>
-              <CancellationPill value={cancellation.status} />
+              <CancellationPill value={cancellation.status} auto={isAutoCancelled(cancellation)} />
               <InfoRow icon="account-outline" label="Người yêu cầu" value="Bạn" />
               <InfoRow icon="message-text-outline" label="Lý do" value={cancellationReasonLabel(cancellation.reasonCode)} />
               {!!cancellation.reasonDetail && <InfoRow icon="text-box-outline" label="Mô tả thêm" value={cancellation.reasonDetail} />}
               <InfoRow icon="clock-outline" label="Thời gian yêu cầu" value={formatDateTime(cancellation.createdAt)} last={!cancellation.storeNote} />
-              {!!cancellation.storeNote && <InfoRow icon="store-outline" label="Ghi chú của cửa hàng" value={cancellation.storeNote} last />}
+              {!!cancellation.storeNote && <InfoRow icon="store-outline" label={isAutoCancelled(cancellation) ? 'Ghi chú' : 'Ghi chú của cửa hàng'} value={cancellation.storeNote} last />}
             </View>
           </>
         )}
@@ -432,9 +448,13 @@ export function OrderDetailScreen({ route, navigation }) {
           <View style={s.cancelBox}>
             <View style={{ flex: 1 }}>
               <Txt v="bodyStrong">Bạn cần hủy đơn?</Txt>
-              <Txt v="small" color={colors.inkSoft}>Gửi lý do để cửa hàng xem xét trước khi chuẩn bị hàng.</Txt>
+              <Txt v="small" color={colors.inkSoft}>
+                {instantCancel
+                  ? 'Đơn chưa được cửa hàng xác nhận nên bạn có thể hủy ngay.'
+                  : 'Đơn đã được xác nhận. Gửi lý do để cửa hàng xem xét trước khi chuẩn bị hàng.'}
+              </Txt>
             </View>
-            <Button title="Yêu cầu hủy" size="sm" variant="danger" onPress={() => setCancelModalOpen(true)} />
+            <Button title={instantCancel ? 'Hủy đơn' : 'Yêu cầu hủy'} size="sm" variant="danger" onPress={() => setCancelModalOpen(true)} />
           </View>
         )}
 

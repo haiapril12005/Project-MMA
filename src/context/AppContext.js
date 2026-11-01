@@ -47,6 +47,13 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // Tải lại tồn kho sau khi đặt hàng, không hiện màn chờ; lỗi thì giữ số cũ
+  const refreshProductsSilently = useCallback(async () => {
+    try {
+      setProducts(await api.products());
+    } catch (e) { /* giữ dữ liệu cũ */ }
+  }, []);
+
   const loadOrders = useCallback(async (userId = userRef.current?.id) => {
     if (!userId) {
       setOrders([]);
@@ -237,6 +244,18 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Tồn kho tính chung mọi màu (database cũng kiểm tra như vậy khi đặt hàng):
+  // số lượng tối đa cho 1 dòng = tồn kho - số lượng các màu khác của cùng sản phẩm đang có trong giỏ
+  const maxQtyFor = (id, selectedColor, cart = userRef.current?.cart || []) => {
+    const productId = String(id);
+    const product = products.find((item) => item.id === productId);
+    const color = selectedColor || product?.color?.[0] || '';
+    const otherColors = cart
+      .filter((item) => item.productId === productId && item.selectedColor !== color)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    return Math.max(0, (product?.stock ?? 0) - otherColors);
+  };
+
   const addToCart = async (id, qty = 1, selectedColor = '') => {
     const current = userRef.current;
     const productId = String(id);
@@ -253,9 +272,11 @@ export function AppProvider({ children }) {
     const color = selectedColor || product.color?.[0] || '';
     const sameLine = (item) => item.productId === productId && item.selectedColor === color;
     const existing = current.cart.find(sameLine);
-    const quantity = Math.min(stock, (existing?.quantity || 0) + Math.max(1, qty));
-    if (existing && quantity === existing.quantity) {
-      notify(`Chỉ còn ${stock} sản phẩm`);
+    const room = maxQtyFor(productId, color, current.cart);
+    const wanted = (existing?.quantity || 0) + Math.max(1, qty);
+    const quantity = Math.min(room, wanted);
+    if (quantity <= (existing?.quantity || 0)) {
+      notify(`Giỏ đã có đủ ${stock} sản phẩm còn trong kho (tính cả các màu)`);
       return false;
     }
     const cart = existing
@@ -266,7 +287,7 @@ export function AppProvider({ children }) {
       () => api.cart.add({ userId: current.id, productId, selectedColor: color, quantity }),
       'Không thêm được vào giỏ. Vui lòng thử lại.',
     );
-    if (ok) notify('Đã thêm vào giỏ hàng');
+    if (ok) notify(quantity < wanted ? `Đã thêm, giỏ đạt tối đa ${stock} sản phẩm còn trong kho` : 'Đã thêm vào giỏ hàng');
     return ok;
   };
 
@@ -275,9 +296,8 @@ export function AppProvider({ children }) {
     if (!current) return false;
     const productId = String(id);
     const product = products.find((item) => item.id === productId);
-    const stock = product?.stock ?? 99;
     const color = selectedColor || product?.color?.[0] || '';
-    const quantity = Math.max(1, Math.min(stock, qty));
+    const quantity = Math.max(1, Math.min(maxQtyFor(productId, color, current.cart), qty));
     const cart = current.cart.map((item) => (
       item.productId === productId && item.selectedColor === color ? { ...item, quantity } : item
     ));
@@ -311,15 +331,45 @@ export function AppProvider({ children }) {
   const cartCount = user ? user.cart.reduce((sum, item) => sum + item.quantity, 0) : 0;
 
   // ---------- Đơn hàng ----------
-  const placeOrder = async ({ shipping, paymentMethod }) => {
+  // buyNowItem = { productId, selectedColor, quantity }: "Mua ngay" chỉ đặt món này, giỏ hàng giữ nguyên
+  const placeOrder = async ({ shipping, paymentMethod, buyNowItem = null }) => {
     const current = userRef.current;
+    if (buyNowItem) {
+      if (!current) throw new Error('Bạn cần đăng nhập để đặt hàng.');
+      try {
+        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod });
+        setOrders((items) => [order, ...items]);
+        refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
+        return order;
+      } catch (e) {
+        // In lỗi gốc ra terminal Metro để dễ tìm nguyên nhân
+        console.warn('[Mua ngay] place_buy_now_order lỗi:', e?.code, e?.message);
+        const message = String(e?.message || '');
+        if (e?.code === 'PGRST202' || message.includes('Could not find the function')) {
+          throw new Error('Database chưa có chức năng Mua ngay. Hãy chạy file supabase/migrations/202611010001_buy_now.sql trong Supabase SQL Editor.');
+        }
+        if (message.includes('CART_QUANTITY_INVALID')) throw new Error('Số lượng vượt quá hàng còn trong kho. Hãy giảm số lượng rồi thử lại.');
+        if (message.includes('PRODUCT_NOT_FOUND')) throw new Error('Sản phẩm này đã ngừng bán.');
+        if (message.includes('PRODUCT_COLOR_INVALID')) throw new Error('Màu đã chọn không còn bán, hãy chọn màu khác.');
+        if (message.includes('SHIPPING_PHONE_INVALID')) throw new Error('Số điện thoại cần từ 9 đến 11 chữ số.');
+        if (message.includes('SHIPPING_ADDRESS_INVALID')) throw new Error('Địa chỉ giao hàng cần ít nhất 10 ký tự.');
+        if (message.includes('AUTH_REQUIRED') || message.includes('JWT')) throw new Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.');
+        throw new Error(`Không gửi được đơn hàng (${e?.code || 'lỗi kết nối'}). Vui lòng thử lại.`);
+      }
+    }
     if (!current || !current.cart.length) throw new Error('Giỏ hàng đang trống.');
     try {
       const order = await api.orders.place({ shipping, paymentMethod });
       setOrders((items) => [order, ...items]);
       setUser({ ...current, cart: [] });
+      refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
       return order;
     } catch (e) {
+      console.warn('[Đặt hàng] place_order lỗi:', e?.code, e?.message);
+      if (String(e?.message || '').includes('CART_QUANTITY_INVALID')) {
+        refreshProductsSilently();
+        throw new Error('Có sản phẩm trong giỏ vượt quá số lượng còn trong kho (tính chung mọi màu). Hãy giảm số lượng rồi thử lại.');
+      }
       throw new Error('Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.');
     }
   };
@@ -329,7 +379,13 @@ export function AppProvider({ children }) {
     try {
       const updatedOrder = await api.orders.requestCancellation({ orderId, reasonCode, reasonDetail });
       setOrders((items) => items.map((item) => (item.id === updatedOrder.id ? updatedOrder : item)));
-      notify('Đã gửi yêu cầu hủy đơn. Cửa hàng sẽ xem xét và phản hồi.');
+      if (updatedOrder.status === 'cancelled') {
+        // Đơn còn "Chờ xác nhận" được hủy ngay và database đã hoàn kho
+        refreshProductsSilently();
+        notify('Đã hủy đơn hàng.');
+      } else {
+        notify('Đã gửi yêu cầu hủy đơn. Cửa hàng sẽ xem xét và phản hồi.');
+      }
       return updatedOrder;
     } catch (e) {
       const message = String(e?.message || '');
@@ -349,7 +405,7 @@ export function AppProvider({ children }) {
         products, loading, error, loadProducts, user, ready,
         login, register, resendConfirmation, logout, updateProfile, changePassword,
         favorites, isFav, toggleFavorite, clearFavorites,
-        addToCart, setQty, removeFromCart, clearCart, cartCount,
+        addToCart, setQty, removeFromCart, clearCart, cartCount, maxQtyFor,
         orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation,
         toast, notify,
       }}
