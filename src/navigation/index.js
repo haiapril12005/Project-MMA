@@ -11,8 +11,8 @@ import FavoritesScreen from '../screens/FavoritesScreen';
 import CartScreen from '../screens/CartScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import DetailScreen from '../screens/DetailScreen';
-import OrdersScreen from '../screens/OrdersScreen';
 import { LoginScreen, RegisterScreen, EditProfileScreen, ChangePasswordScreen } from '../screens/AuthScreens';
+import { CheckoutScreen, OrderSuccessScreen, OrderHistoryScreen, OrderDetailScreen } from '../screens/OrderScreens';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -49,7 +49,10 @@ export default function RootNavigator() {
       <Stack.Screen name="Register" component={RegisterScreen} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
-      <Stack.Screen name="Orders" component={OrdersScreen} />
+      <Stack.Screen name="Checkout" component={CheckoutScreen} />
+      <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} options={{ gestureEnabled: false }} />
+      <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
+      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
     </Stack.Navigator>
   );
 }

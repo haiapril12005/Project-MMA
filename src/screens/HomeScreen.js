@@ -34,7 +34,7 @@ export default function HomeScreen({ navigation }) {
           <Txt v="small" color={colors.inkSoft}>{greeting()}{firstName ? `, ${firstName}` : ''}</Txt>
           <Txt v="display">Nội thất cho{'\n'}ngôi nhà ấm</Txt>
         </View>
-        <Pressable onPress={() => navigation.navigate('Profile')} style={s.avatar} accessibilityLabel="Tài khoản">
+        <Pressable onPress={() => navigation.navigate('Profile')} style={s.avatar} accessibilityRole="button" accessibilityLabel="Tài khoản">
           {user ? <Txt v="subtitle" color={colors.primary}>{user.name.trim().charAt(0).toUpperCase()}</Txt> : <Icon name="account-outline" color={colors.primary} />}
         </Pressable>
       </View>
@@ -52,7 +52,7 @@ export default function HomeScreen({ navigation }) {
           style={[s.searchInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
         />
         {!!q && (
-          <Pressable onPress={() => setQ('')} hitSlop={8} accessibilityLabel="Xóa từ khóa">
+            <Pressable onPress={() => setQ('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Xóa từ khóa">
             <Icon name="close" size={20} color={colors.inkSoft} />
           </Pressable>
         )}
@@ -95,7 +95,7 @@ export default function HomeScreen({ navigation }) {
       {/* Số kết quả + sắp xếp */}
       <View style={s.resultRow}>
         <Txt v="subtitle">{cat === 'Tất cả' ? 'Tất cả sản phẩm' : cat}<Txt v="small" color={colors.inkMuted}>{`  ${data.length} món`}</Txt></Txt>
-        <Pressable onPress={() => setSort(sort === 'priceDesc' ? 'priceAsc' : 'priceDesc')} style={s.sortBtn} accessibilityLabel={`Sắp xếp: ${sortInfo.label}`}>
+        <Pressable onPress={() => setSort(sort === 'priceDesc' ? 'priceAsc' : 'priceDesc')} style={s.sortBtn} accessibilityRole="button" accessibilityLabel={`Sắp xếp: ${sortInfo.label}`}>
           <Icon name={sortInfo.icon} size={18} color={colors.primary} />
           <Txt v="caption" color={colors.primary} style={{ fontSize: 13 }}>{sortInfo.label}</Txt>
         </Pressable>

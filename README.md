@@ -1,73 +1,81 @@
-# FurWorld - Nội thất cho ngôi nhà ấm (Expo + React Native)
+# FurWorld — ứng dụng mua nội thất (Expo + Supabase)
 
-App bán nội thất: đèn chùm, sofa, ghế gỗ, bộ bàn ghế và đồ gia dụng hiện đại. Chạy được trên điện thoại (Expo Go / Android Studio) và trên trình duyệt mobile.
+Ứng dụng người mua chạy trên Expo/React Native và web. Dữ liệu thật được lưu trên Supabase PostgreSQL; tài khoản dùng Supabase Auth, không lưu mật khẩu trong code hoặc bảng public.
 
-## Chạy thử
+## Chức năng chính
+
+- Catalog 40 sản phẩm, tìm kiếm, lọc, sắp xếp và xem đánh giá.
+- Đăng ký/đăng nhập email, hồ sơ và đổi mật khẩu bằng Supabase Auth.
+- Yêu thích và giỏ hàng đồng bộ theo tài khoản trên nhiều thiết bị.
+- Chọn màu, số lượng, thông tin nhận hàng và COD/chuyển khoản.
+- Tạo đơn atomically ở PostgreSQL, sinh mã đơn phía server và giữ snapshot sản phẩm/giá/màu.
+- Lịch sử, chi tiết và tiến trình trạng thái đơn hàng.
+- Gửi yêu cầu hủy có lý do khi đơn còn chờ xác nhận/đã xác nhận; cửa hàng duyệt hoặc từ chối và để lại ghi chú.
+- RLS giới hạn người mua chỉ đọc/sửa hồ sơ, giỏ, yêu thích, đánh giá và đơn của chính họ.
+
+## Khởi tạo Supabase lần đầu
+
+Project cần chạy ba file theo đúng thứ tự trong **Supabase Dashboard → SQL Editor**:
+
+1. `supabase/migrations/202610290001_initial_schema.sql`
+2. `supabase/migrations/202610300001_order_cancellations.sql`
+3. `supabase/seed.sql`
+
+Migration tạo các bảng `profiles`, `products`, `reviews`, `favorites`, `cart_items`, `orders`, `order_items`, `order_status_history`, `order_cancellation_requests`, trigger tạo hồ sơ, RLS và các RPC đặt/hủy đơn. Seed chỉ thêm 40 sản phẩm và 160 đánh giá mẫu; không tạo tài khoản hoặc đơn hàng giả.
+
+Khi sửa `src/data/seed.js`, chạy:
+
+```bash
+npm run supabase:seed
+```
+
+Sau đó chạy lại file `supabase/seed.sql` trong SQL Editor.
+
+## Cấu hình môi trường
+
+Sao chép `.env.example` thành `.env` và điền public project URL cùng anon key:
+
+```dotenv
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
+```
+
+`anon key` được phép dùng ở client; bảo mật dữ liệu do RLS đảm nhiệm. Tuyệt đối không đưa `service_role key` vào Expo/web.
+
+Nếu **Confirm email** đang bật trong Supabase Auth, người dùng phải bấm liên kết xác nhận trước khi đăng nhập. Cấu hình Site URL/Redirect URLs và SMTP riêng trước khi đưa lên production.
+
+## Chạy project
 
 ```bash
 npm install
-npx expo install --fix     # căn chỉnh phiên bản thư viện theo SDK Expo
-npx expo start             # quét QR bằng Expo Go
-npx expo start --web       # hoặc mở trên trình duyệt (bấm w)
+npm test
+npx expo start
+npx expo start --web
 ```
 
-Nếu báo lỗi cache sau khi đổi code: `npx expo start -c`.
+## Cấu trúc dữ liệu
 
-Tài khoản thử: `demo@furworld.vn` / `123456` (màn Đăng nhập có nút "Dùng tài khoản demo").
+- `src/lib/supabase.js`: client Supabase và session storage cho web/mobile.
+- `src/api/index.js`: mapping dữ liệu database sang model giao diện.
+- `src/context/AppContext.js`: Auth, hồ sơ, yêu thích, giỏ và đơn hàng.
+- `supabase/migrations/`: schema, constraints, trigger, RLS và RPC.
+- `supabase/seed.sql`: dữ liệu catalog/đánh giá được sinh tự động.
 
-## Giao diện
+## Lưu ý nghiệp vụ
 
-- Tone ấm, không chói, không tối: nền lanh `#F6F0E9`, thẻ `#FFFBF6`, màu nhấn đất nung `#985333`, chữ nâu cacao `#4A3A30`.
-- Mọi cặp chữ/nền đạt độ tương phản tối thiểu 4.5:1.
-- Font Be Vietnam Pro (hiển thị dấu tiếng Việt đẹp), icon MaterialCommunityIcons.
-- Toàn bộ màu, font, bo góc nằm trong `src/theme.js`. Đổi tông cả app chỉ cần sửa file này.
+- Ứng dụng không quản lý nhập/xuất kho; chỉ hiển thị và giới hạn số lượng theo trường `stock` như yêu cầu giao diện người mua.
+- RPC `place_order` tính lại giá từ database, tạo đơn + chi tiết đơn và xóa giỏ trong cùng một transaction. Nếu có lỗi, giỏ hàng vẫn còn nguyên.
+- Chuyển khoản hiện là lựa chọn thanh toán và trạng thái `unpaid`; chưa tích hợp cổng thanh toán ngân hàng.
+- Cập nhật trạng thái giao hàng cần thực hiện bằng dashboard hoặc một ứng dụng quản trị/service backend riêng.
 
-## Màn hình và chức năng
+## Duyệt yêu cầu hủy trong Supabase Dashboard
 
-| Màn hình | Chức năng |
-|---|---|
-| Trang chủ | Lời chào, tìm kiếm không dấu ("den chum" vẫn ra "Đèn chùm"), banner, 5 danh mục, lọc theo thương hiệu, sắp xếp giá (mặc định cao xuống thấp), lưới 2 cột, kéo để tải lại, khung chờ tải |
-| Chi tiết | Ảnh lớn, giá sau giảm và % giảm, chọn màu, thông số dạng lưới, bấm dòng sao để nhảy xuống phần đánh giá, đánh giá gom theo số sao + lọc theo sao, viết/sửa/xóa đánh giá, thanh mua hàng cố định |
-| Yêu thích | Lưu trên máy bằng AsyncStorage (không cần đăng nhập), bỏ từng món, xóa tất cả có xác nhận, thêm nhanh vào giỏ |
-| Giỏ hàng | Mỗi dòng = sản phẩm + màu đã chọn, tăng/giảm số lượng theo tồn kho (tính chung mọi màu), xóa món, xóa tất cả, thông tin giao hàng, tạm tính, tiền giảm, tổng cộng, đặt hàng |
-| Đặt hàng | Bắt buộc có SĐT (10 số) + địa chỉ; kiểm tra lại tồn kho trên server; tạo đơn trong `orders` (lưu giá, màu, người nhận tại thời điểm đặt); trừ `stock`; xóa giỏ |
-| Đơn hàng | Lịch sử đơn của tài khoản, mới nhất ở trên, trạng thái "Chờ xác nhận" |
-| Tài khoản | Hồ sơ, số món yêu thích/trong giỏ, đơn hàng, sửa thông tin (kiểm tra SĐT), đổi mật khẩu (chỉ báo thành công khi server lưu xong), đăng xuất |
-| Đăng nhập / Đăng ký | Nhãn ở trên ô nhập, lỗi hiển thị ngay dưới từng ô |
+Người mua chỉ được gửi và đọc yêu cầu của chính mình. Cửa hàng duyệt trong SQL Editor bằng `id` của yêu cầu:
 
-## Cấu trúc
-
-```
-App.js                     Nạp font, SafeArea, Provider, Navigation, Toast
-src/
-  theme.js                 Màu, font, bo góc, bóng đổ
-  config.js                USE_MOCK, BASE_URL, khóa AsyncStorage
-  utils.js                 Danh mục, định dạng giá, bỏ dấu, lọc + sắp xếp, hộp thoại xác nhận (chạy cả web)
-  api/                     list / create / update / remove giống mockapi.io
-  context/AppContext.js    Đăng nhập, yêu thích (AsyncStorage), giỏ hàng, thông báo
-  navigation/index.js      Native Stack + Bottom Tabs (thanh tab tự thiết kế)
-  components/ui.js         Txt, Button, IconButton, Chip, Field, Stars, ProductImage, Skeleton, EmptyState, QtyStepper
-  components/              ProductCard, TabBar, Toast
-  screens/                 Home, Detail, Favorites, Cart, Orders, Profile, AuthScreens
-  data/seed.js             40 sản phẩm, 5 thương hiệu, 160 đánh giá mẫu
+```sql
+update public.order_cancellation_requests
+set status = 'approved', store_note = 'Cửa hàng đã xác nhận hủy đơn.'
+where id = 'REQUEST_UUID';
 ```
 
-Các file `components/TopBar.js`, `components/FilterBar.js`, `screens/ProductListScreen.js` là file cũ, không còn dùng, có thể xóa.
-
-## Chuyển sang mockapi.io thật
-
-1. Tạo project trên mockapi.io với 4 resource: `products`, `users`, `reviews`, `orders`.
-2. Chạy `npm run seed` để sinh `seed/products.json`, `users.json`, `reviews.json`, `orders.json`, rồi import vào mockapi.io.
-3. Trong `src/config.js`: đặt `USE_MOCK = false` và dán `BASE_URL` (dạng `https://xxxx.mockapi.io/api/v1`).
-
-Trường của `products`: `id, name, price, category, brand, color[], material, dimensions, description, uri, percentOff, stock`.
-
-Trường của `users.cart[]`: `productId, color, quantity`.
-
-Trường của `orders`: `id, userId, receiver, phone, address, items[] (productId, name, uri, category, color, quantity, unitPrice), total, status, createdAt`.
-
-## Ghi chú
-
-- Ảnh sản phẩm lấy từ Pexels (miễn phí). Khi mất mạng, ảnh tự thay bằng icon của danh mục.
-- Chế độ mock lưu dữ liệu vào AsyncStorage để giả lập server. Sửa `seed.js` xong muốn nạp lại thì tăng `SEED_VERSION` trong `config.js`.
-- Mật khẩu lưu dạng chữ thường, chỉ dùng cho bài tập/demo.
+Khi duyệt, trigger tự chuyển đơn sang `cancelled` và ghi lịch sử trạng thái. Để từ chối, dùng `status = 'rejected'` và điền lý do vào `store_note`. Mỗi đơn chỉ được gửi một yêu cầu hủy.

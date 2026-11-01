@@ -1,8 +1,26 @@
-// Dữ liệu mẫu theo định dạng mockapi.io.
-// Dùng CommonJS để chạy được cả trong app lẫn lệnh `npm run seed`.
+// Nguồn dữ liệu mẫu để sinh supabase/seed.sql.
+// Dùng CommonJS để chạy trực tiếp bằng Node qua `npm run supabase:seed`.
 // Ảnh lấy từ Pexels (miễn phí, được dùng cho mục đích thương mại). Có thể thay bằng ảnh sản phẩm thật của bạn.
 
-const img = (id) => `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=800`;
+// Ánh xạ toàn bộ ảnh catalog cũ sang ảnh thật đã kiểm tra HTTP 200 ngày 29/10/2026.
+// Giữ khóa ảnh cũ trong CATALOG để migration này không làm xáo trộn dữ liệu nghiệp vụ.
+const IMAGE_REPLACEMENTS = new Map([
+  [9116521, 16021300], [9797913, 6587826], [11256573, 31206787], [12024171, 298542],
+  [28656088, 15857173], [5561129, 6134886], [17299918, 10931479], [36265889, 12128458],
+  [6758245, 5824901], [6580416, 5490303], [4857775, 5825564], [7018400, 12497935],
+  [6480707, 19966810], [4846097, 31594915], [4112598, 12284838], [39828916, 17264276],
+  [29917912, 19862426], [11736189, 7193628], [36339342, 35108893], [15948887, 8251244],
+  [16037587, 17919765], [2079246, 8986694], [18258470, 18447738], [32710106, 33120248],
+  [2995012, 4800180], [6748972, 22702955], [7538106, 39854860], [37895915, 8186472],
+  [1843653, 4469144], [7195580, 15629643], [7166645, 7195590], [33442153, 18781214],
+  [18071814, 9696590], [30946798, 35014602], [3997309, 4846295], [5825406, 7936636],
+  [7614540, 35747335], [11826919, 7787208], [4349798, 13096241], [6527057, 37108938],
+]);
+
+const img = (id) => {
+  const imageId = IMAGE_REPLACEMENTS.get(id) ?? id;
+  return `https://images.pexels.com/photos/${imageId}/pexels-photo-${imageId}.jpeg?auto=compress&cs=tinysrgb&w=800`;
+};
 
 // [tên, giá gốc (VND), thương hiệu, chất liệu, kích thước, màu, id ảnh Pexels, % giảm]
 const CATALOG = {
@@ -88,10 +106,6 @@ Object.entries(CATALOG).forEach(([category, items]) =>
   })
 );
 
-const users = [
-  { id: '1', name: 'Phùng Thanh Độ', email: 'demo@furworld.vn', password: '123456', phone: '0123456789', address: 'Chùa Láng, Hà Nội', cart: [] },
-];
-
 const NAMES = ['Ngọc Hân', 'Đức Huy', 'Bảo Trâm', 'Thanh Tùng', 'Mai Chi', 'Gia Khánh', 'Phương Linh', 'Quang Vinh'];
 const COMMENTS = {
   5: ['Hàng đẹp y như ảnh, giao và lắp đặt rất cẩn thận.', 'Chất lượng tốt hơn mong đợi, cả nhà đều thích.', 'Màu ấm, hợp với phòng khách nhà mình.'],
@@ -123,7 +137,4 @@ products.forEach((p) => {
   }
 });
 
-// Đơn hàng: bắt đầu rỗng, được tạo khi người dùng bấm "Đặt hàng"
-const orders = [];
-
-module.exports = { products, users, reviews, orders };
+module.exports = { products, reviews };

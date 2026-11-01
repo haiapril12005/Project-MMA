@@ -6,7 +6,7 @@ import { colors, radius, SCREEN_PADDING } from '../theme';
 import { confirmAction, finalPrice, formatVND, percentLabel } from '../utils';
 import { EmptyState, IconButton, ProductImage, Txt } from '../components/ui';
 
-// Danh sách yêu thích lưu trên máy (AsyncStorage)
+// Danh sách yêu thích được đồng bộ theo tài khoản Supabase.
 export default function FavoritesScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { products, favorites, toggleFavorite, clearFavorites, addToCart, user } = useApp();
@@ -29,7 +29,7 @@ export default function FavoritesScreen({ navigation }) {
           <Txt v="small" color={colors.inkSoft}>{items.length ? `${items.length} món bạn đã lưu` : 'Lưu lại những món bạn ưng ý'}</Txt>
         </View>
         {items.length > 0 && (
-          <Pressable onPress={askClear} style={s.clear} accessibilityRole="button">
+          <Pressable onPress={askClear} style={s.clear} accessibilityRole="button" accessibilityLabel="Xóa tất cả yêu thích">
             <Txt v="caption" color={colors.danger} style={{ fontSize: 13 }}>Xóa tất cả</Txt>
           </Pressable>
         )}
@@ -43,28 +43,30 @@ export default function FavoritesScreen({ navigation }) {
         ListEmptyComponent={
           <EmptyState
             icon="heart-outline"
-            title="Chưa có món nào"
-            text="Bấm vào biểu tượng trái tim trên sản phẩm để lưu lại và xem sau."
-            action="Khám phá sản phẩm"
-            onPress={() => navigation.navigate('Home')}
+            title={user ? 'Chưa có món nào' : 'Đăng nhập để xem yêu thích'}
+            text={user ? 'Bấm vào biểu tượng trái tim trên sản phẩm để lưu lại và xem sau.' : 'Danh sách yêu thích sẽ được đồng bộ trên các thiết bị của bạn.'}
+            action={user ? 'Khám phá sản phẩm' : 'Đăng nhập'}
+            onPress={() => navigation.navigate(user ? 'Home' : 'Login')}
           />
         }
         renderItem={({ item: p }) => (
-          <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} style={({ pressed }) => [s.row, pressed && { opacity: 0.9 }]}>
-            <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
-            <View style={{ flex: 1, gap: 2 }}>
+          <View style={s.row}>
+            <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
+              <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
+            </Pressable>
+            <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${p.name}`} style={({ pressed }) => [{ flex: 1, gap: 2 }, pressed && { opacity: 0.8 }]}>
               <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>
               <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20 }}>{p.name}</Txt>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                 <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(finalPrice(p))}</Txt>
                 {p.percentOff > 0 && <Txt v="caption" color={colors.inkMuted}>{percentLabel(p)}</Txt>}
               </View>
-            </View>
+            </Pressable>
             <View style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <IconButton icon="heart" color={colors.primary} bg={colors.primarySoft} size={38} iconSize={19} onPress={() => toggleFavorite(p.id)} label="Bỏ yêu thích" />
               <IconButton icon="cart-plus" color={colors.ink} bg={colors.sunken} size={38} iconSize={19} onPress={() => (user ? addToCart(p.id, 1, p.color?.[0]) : navigation.navigate('Login'))} label="Thêm vào giỏ" />
             </View>
-          </Pressable>
+          </View>
         )}
       />
     </View>

@@ -12,14 +12,11 @@ function ProductCard({ item }) {
   const { isFav, toggleFavorite } = useApp();
   const fav = isFav(item.id);
   return (
-    <Pressable
-      onPress={() => nav.navigate('Detail', { id: item.id })}
-      style={({ pressed }) => [s.wrap, pressed && { transform: [{ scale: 0.985 }] }]}
-      accessibilityRole="button"
-      accessibilityLabel={item.name}
-    >
+    <View style={s.wrap}>
       <View>
-        <ProductImage uri={item.uri} category={item.category} style={s.img} />
+        <Pressable onPress={() => nav.navigate('Detail', { id: item.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${item.name}`} style={({ pressed }) => pressed && { opacity: 0.88 }}>
+          <ProductImage uri={item.uri} category={item.category} style={s.img} />
+        </Pressable>
         <IconButton
           icon={fav ? 'heart' : 'heart-outline'}
           color={fav ? colors.primary : colors.ink}
@@ -31,7 +28,7 @@ function ProductCard({ item }) {
           style={s.heart}
         />
       </View>
-      <View style={s.body}>
+      <Pressable onPress={() => nav.navigate('Detail', { id: item.id })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${item.name}`} style={({ pressed }) => [s.body, pressed && { opacity: 0.75 }]}>
         <Txt v="caption" color={colors.inkMuted}>{item.brand}</Txt>
         <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20, minHeight: 40 }}>{item.name}</Txt>
         <View style={s.priceRow}>
@@ -41,8 +38,8 @@ function ProductCard({ item }) {
         {item.percentOff > 0 ? (
           <Txt v="small" color={colors.inkMuted} style={{ textDecorationLine: 'line-through', fontSize: 12 }}>{formatVND(item.price)}</Txt>
         ) : <Txt v="small" color={colors.success} style={{ fontSize: 12 }}>Giá tốt mỗi ngày</Txt>}
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 

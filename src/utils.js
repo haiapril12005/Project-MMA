@@ -15,6 +15,30 @@ export const SORTS = [
   { key: 'priceAsc', label: 'Giá thấp trước', icon: 'sort-ascending' },
 ];
 
+export const PAYMENT_METHODS = [
+  { key: 'cod', label: 'Thanh toán khi nhận hàng', icon: 'cash', note: 'Thanh toán bằng tiền mặt hoặc chuyển khoản khi nhận hàng.' },
+  { key: 'bank_transfer', label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
+];
+
+export const ORDER_STATUSES = {
+  pending_confirmation: { label: 'Chờ xác nhận', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
+  confirmed: { label: 'Đã xác nhận', color: '#47708A', bg: '#E1EDF3', icon: 'check-circle-outline' },
+  preparing: { label: 'Đang chuẩn bị', color: '#79652F', bg: '#F2ECD8', icon: 'package-variant-closed' },
+  shipping: { label: 'Đang giao', color: '#356B58', bg: '#DDEDE6', icon: 'truck-delivery-outline' },
+  delivered: { label: 'Đã giao', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
+  cancelled: { label: 'Đã hủy', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
+};
+
+export const ORDER_FLOW = ['pending_confirmation', 'confirmed', 'preparing', 'shipping', 'delivered'];
+
+export const paymentLabel = (key) => PAYMENT_METHODS.find((p) => p.key === key)?.label || 'Chưa xác định';
+export const orderStatus = (key) => ORDER_STATUSES[key] || ORDER_STATUSES.pending_confirmation;
+
+export const formatDateTime = (value) => {
+  if (!value) return '';
+  return new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 // Màu sắc sản phẩm -> ô màu hiển thị ở trang chi tiết
 export const SWATCHES = {
   'Vàng đồng': '#C9A46A', 'Trong suốt': '#E8EEF0', 'Trắng ngà': '#F4EDE1', 'Vàng nhạt': '#EED9A6',
@@ -26,8 +50,6 @@ export const SWATCHES = {
 export const formatVND = (n) => `${String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
 export const finalPrice = (p) => Math.round(p.price * (1 - (p.percentOff || 0)));
 export const percentLabel = (p) => `-${Math.round((p.percentOff || 0) * 100)}%`;
-// SĐT Việt Nam: 10 số, bắt đầu bằng 0 (cho phép gõ kèm khoảng trắng, dấu chấm, gạch ngang)
-export const isValidPhone = (s = '') => /^0\d{9}$/.test(String(s).replace(/[\s.-]/g, ''));
 
 // Bỏ dấu tiếng Việt để tìm kiếm: "den chum" vẫn ra "Đèn chùm"
 export const norm = (s = '') =>

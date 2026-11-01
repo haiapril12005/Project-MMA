@@ -1,4 +1,4 @@
-// Chạy: npm run seed  -> tạo thư mục seed/ chứa products.json, users.json, reviews.json để import vào mockapi.io
+// Chạy: npm run seed -> xuất products và reviews ở dạng JSON khi cần đối chiếu dữ liệu.
 const fs = require('fs');
 const path = require('path');
 const seed = require('../src/data/seed');
