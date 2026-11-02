@@ -1,20 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
-import { api } from '../api';
+import { useProductReviews } from '../hooks/useProductReviews';
 import { colors, fonts, radius, SCREEN_PADDING, shadow } from '../theme';
 import { confirmAction, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
 import { Button, Chip, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Stars, Txt } from '../components/ui';
-
-const reviewErrorMessage = (error) => {
-  const message = String(error?.message || '');
-  if (message.includes('REVIEW_PURCHASE_REQUIRED')) return 'Chỉ khách hàng có đơn đã giao mới được đánh giá sản phẩm này.';
-  if (message.includes('REVIEW_RATE_LIMIT')) return 'Bạn thao tác quá nhanh. Vui lòng chờ 60 giây rồi thử lại.';
-  if (message.includes('REVIEW_COMMENT_LENGTH_INVALID')) return 'Nội dung đánh giá cần từ 10 đến 1.000 ký tự.';
-  if (message.includes('REVIEW_LINK_NOT_ALLOWED')) return 'Đánh giá không được chứa đường link quảng cáo.';
-  return 'Không lưu được đánh giá. Vui lòng thử lại sau.';
-};
 
 export default function DetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -24,38 +15,18 @@ export default function DetailScreen({ route, navigation }) {
   const reviewsY = useRef(0); // vị trí phần đánh giá, dùng cho nút "xem đánh giá"
   const sheetY = useRef(0);
 
-  const [reviews, setReviews] = useState([]);
+  const {
+    reviews, loading: reviewsLoading, error: reviewsError, retry: retryReviews,
+    canReview, eligibilityLoading, save: saveReview, remove: removeReview,
+  } = useProductReviews(route.params.id, user?.id);
   const [starFilter, setStarFilter] = useState(0);
   const [color, setColor] = useState(product?.color?.[0]);
   const [qty, setQty] = useState(1);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
-  const [canReview, setCanReview] = useState(false);
-  const [eligibilityLoading, setEligibilityLoading] = useState(Boolean(user));
 
   const mine = user ? reviews.find((r) => String(r.userId) === String(user.id)) : null;
-  const loadReviews = useCallback(async () => setReviews(await api.reviews.byProduct(route.params.id)), [route.params.id]);
-
-  useEffect(() => {
-    let active = true;
-    api.reviews.byProduct(route.params.id).then((list) => active && setReviews(list)).catch(() => {});
-    return () => { active = false; };
-  }, [route.params.id]);
-  useEffect(() => {
-    let active = true;
-    if (!user) {
-      setCanReview(false);
-      setEligibilityLoading(false);
-      return () => { active = false; };
-    }
-    setEligibilityLoading(true);
-    api.reviews.canReview(route.params.id)
-      .then((allowed) => { if (active) setCanReview(allowed); })
-      .catch(() => { if (active) setCanReview(false); })
-      .finally(() => { if (active) setEligibilityLoading(false); });
-    return () => { active = false; };
-  }, [route.params.id, user?.id]);
   useEffect(() => { setRating(mine ? mine.rating : 5); setComment(mine ? mine.comment : ''); }, [mine?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Gom đánh giá theo số sao để người dùng xem nhanh
@@ -95,23 +66,21 @@ export default function DetailScreen({ route, navigation }) {
     if (/(https?:\/\/|www\.)/i.test(cleanComment)) { notify('Đánh giá không được chứa đường link quảng cáo.'); return; }
     setBusy(true);
     try {
-      await api.reviews.save({ productId: product.id, rating, comment: cleanComment });
-      await loadReviews();
+      await saveReview({ rating, comment: cleanComment });
       notify(mine ? 'Đã cập nhật đánh giá' : 'Cảm ơn bạn đã đánh giá');
-    } catch (e) { notify(reviewErrorMessage(e)); }
+    } catch (e) { notify(e.message); }
     setBusy(false);
   };
   const removeMine = () => confirmAction({
     title: 'Xóa đánh giá', message: 'Bạn muốn xóa đánh giá của mình?', confirmText: 'Xóa', destructive: true,
     onConfirm: async () => {
       try {
-        await api.reviews.remove(mine.id);
+        await removeReview(mine.id);
         setComment('');
         setRating(5);
-        await loadReviews();
         notify('Đã xóa đánh giá');
       } catch (e) {
-        notify(reviewErrorMessage(e));
+        notify(e.message);
       }
     },
   });
@@ -194,6 +163,16 @@ export default function DetailScreen({ route, navigation }) {
           <View onLayout={(e) => { reviewsY.current = sheetY.current + e.nativeEvent.layout.y; }} style={{ marginTop: 32 }}>
             <Txt v="title">Đánh giá từ khách hàng</Txt>
 
+            {reviewsError ? (
+              <View style={s.reviewError}>
+                <Icon name="wifi-off" size={22} color={colors.danger} />
+                <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>{reviewsError}</Txt>
+                <Button title="Thử lại" variant="outline" size="sm" onPress={retryReviews} />
+              </View>
+            ) : reviewsLoading && !reviews.length ? (
+              <Txt v="small" color={colors.inkMuted} style={{ marginTop: 14 }}>Đang tải đánh giá...</Txt>
+            ) : (
+            <>
             <View style={s.summary}>
               <View style={{ alignItems: 'center', width: 96 }}>
                 <Txt v="display" style={{ fontSize: 40, lineHeight: 46 }}>{reviews.length ? avg.toFixed(1) : '0'}</Txt>
@@ -242,6 +221,8 @@ export default function DetailScreen({ route, navigation }) {
                 ))}
               </View>
             ))}
+            </>
+            )}
 
             {/* Viết đánh giá */}
             <View style={s.writeBox}>
@@ -327,6 +308,7 @@ const s = StyleSheet.create({
   review: { flexDirection: 'row', gap: 12, paddingVertical: 12 },
   reviewAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E2EEE7', borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2 },
+  reviewError: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, padding: 14, backgroundColor: colors.surface, borderRadius: radius.card },
   writeBox: { marginTop: 24, backgroundColor: colors.surface, borderRadius: radius.card, padding: 18 },
   reviewLocked: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, backgroundColor: colors.primarySoft, borderRadius: radius.input, padding: 12 },
   textarea: { minHeight: 96, borderWidth: 1, borderColor: colors.line, borderRadius: radius.input, padding: 14, fontFamily: fonts.regular, fontSize: 15, color: colors.ink, textAlignVertical: 'top', backgroundColor: colors.bg },

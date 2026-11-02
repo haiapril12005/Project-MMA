@@ -7,7 +7,6 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "seed": "node scripts/export-seed.js",
     "supabase:seed": "node scripts/export-supabase-seed.js",
     "test": "node --test tests/*.test.js"
   },

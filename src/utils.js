@@ -15,9 +15,29 @@ export const SORTS = [
   { key: 'priceAsc', label: 'Giá thấp trước', icon: 'sort-ascending' },
 ];
 
+export const ORDER_STATUS = {
+  PENDING_CONFIRMATION: 'pending_confirmation',
+  CONFIRMED: 'confirmed',
+  PREPARING: 'preparing',
+  SHIPPING: 'shipping',
+  DELIVERED: 'delivered',
+  CANCELLED: 'cancelled',
+};
+
+export const CANCELLATION_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+};
+
+export const PAYMENT_METHOD = {
+  COD: 'cod',
+  BANK_TRANSFER: 'bank_transfer',
+};
+
 export const PAYMENT_METHODS = [
-  { key: 'cod', label: 'Thanh toán khi nhận hàng', icon: 'cash', note: 'Thanh toán bằng tiền mặt hoặc chuyển khoản khi nhận hàng.' },
-  { key: 'bank_transfer', label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
+  { key: PAYMENT_METHOD.COD, label: 'Thanh toán khi nhận hàng', icon: 'cash', note: 'Thanh toán bằng tiền mặt hoặc chuyển khoản khi nhận hàng.' },
+  { key: PAYMENT_METHOD.BANK_TRANSFER, label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
 ];
 
 export const INSTALLATION_TIME_SLOTS = [
@@ -34,7 +54,6 @@ export const ORDER_STATUSES = {
   cancelled: { label: 'Đã hủy', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
 };
 
-export const ORDER_FLOW = ['pending_confirmation', 'confirmed', 'preparing', 'shipping', 'delivered'];
 
 export const paymentLabel = (key) => PAYMENT_METHODS.find((p) => p.key === key)?.label || 'Chưa xác định';
 export const orderStatus = (key) => ORDER_STATUSES[key] || ORDER_STATUSES.pending_confirmation;

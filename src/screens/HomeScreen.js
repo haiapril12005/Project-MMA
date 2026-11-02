@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
@@ -24,6 +24,13 @@ export default function HomeScreen({ navigation }) {
   const firstName = user?.name?.trim().split(' ').pop();
 
   const resetFilters = () => { setQ(''); setCat('Tất cả'); setBrand(null); };
+
+  // Trang chủ không bị gỡ khi đổi tài khoản, nên xóa từ khóa và bộ lọc của tài khoản trước
+  useEffect(() => {
+    resetFilters();
+    setSort('priceDesc');
+  }, [user?.id]);
+
   const renderItem = useCallback(({ item }) => <ProductCard item={item} />, []);
 
   const header = (

@@ -5,13 +5,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
 import {
+  CANCELLATION_STATUS,
   earliestInstallationDate,
   formatDateOnly,
   formatDateTime,
   formatVND,
   INSTALLATION_TIME_SLOTS,
   isValidISODate,
+  ORDER_STATUS,
   orderStatus,
+  PAYMENT_METHOD,
   PAYMENT_METHODS,
   paymentLabel,
 } from '../utils';
@@ -30,7 +33,7 @@ const cancellationReasonLabel = (key) => CANCELLATION_REASONS.find((item) => ite
 
 // Ghi chú database tự gắn khi đơn được hủy ngay lúc còn "Chờ xác nhận" (xem migration 202611020001_instant_cancel.sql)
 const AUTO_CANCEL_NOTE_PREFIX = 'Tự động hủy';
-const isAutoCancelled = (request) => request?.status === 'approved' && String(request.storeNote || '').startsWith(AUTO_CANCEL_NOTE_PREFIX);
+const isAutoCancelled = (request) => request?.status === CANCELLATION_STATUS.APPROVED && String(request.storeNote || '').startsWith(AUTO_CANCEL_NOTE_PREFIX);
 const reorderResultMessage = (result) => {
   const skipped = result.issues.filter((issue) => issue.addedQuantity === 0).length;
   const limited = result.issues.filter((issue) => issue.reason === 'quantity_limited').length;
@@ -101,7 +104,7 @@ function CancellationPill({ value, style }) {
 function CancelOrderModal({ visible, order, onClose, onSubmit }) {
   const insets = useSafeAreaInsets();
   // Đơn chưa được cửa hàng xác nhận thì hủy ngay, không cần chờ duyệt
-  const instant = order?.status === 'pending_confirmation';
+  const instant = order?.status === ORDER_STATUS.PENDING_CONFIRMATION;
   const [reasonCode, setReasonCode] = useState('');
   const [reasonDetail, setReasonDetail] = useState('');
   const [error, setError] = useState('');
@@ -207,7 +210,7 @@ export function CheckoutScreen({ route, navigation }) {
   const [installationDate, setInstallationDate] = useState(earliestInstallationDate());
   const [installationTimeSlot, setInstallationTimeSlot] = useState('');
   const [installationNote, setInstallationNote] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHOD.COD);
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -422,7 +425,7 @@ export function OrderSuccessScreen({ route, navigation }) {
         <SummaryLine label="Tổng cộng" value={formatVND(order.total)} color={colors.primary} />
       </View>
 
-      {order.paymentMethod === 'bank_transfer' && (
+      {order.paymentMethod === PAYMENT_METHOD.BANK_TRANSFER && (
         <View style={s.infoBox}>
           <Icon name="information-outline" color={colors.primary} />
           <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Đây là thanh toán mô phỏng. Cửa hàng sẽ liên hệ gửi hướng dẫn chuyển khoản.</Txt>
@@ -494,7 +497,7 @@ export function OrderHistoryScreen({ navigation }) {
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <StatusPill value={item.status} />
                   {/* Yêu cầu hủy đã được chấp nhận thì đơn đã là "Đã hủy", không cần nhãn thứ hai */}
-                  {!!item.cancellationRequest && item.cancellationRequest.status !== 'approved' && <CancellationPill value={item.cancellationRequest.status} />}
+                  {!!item.cancellationRequest && item.cancellationRequest.status !== CANCELLATION_STATUS.APPROVED && <CancellationPill value={item.cancellationRequest.status} />}
                 </View>
               </View>
               <View style={s.orderPreview}>
@@ -508,7 +511,7 @@ export function OrderHistoryScreen({ navigation }) {
                 <Txt v="small" color={colors.inkSoft}>{item.items.reduce((sum, i) => sum + i.quantity, 0)} sản phẩm</Txt>
                 <Txt v="price" color={colors.primary}>{formatVND(item.total)}</Txt>
               </View>
-              {item.status === 'delivered' && (
+              {item.status === ORDER_STATUS.DELIVERED && (
                 <Button
                   title="Mua lại"
                   icon="cart-plus"
@@ -547,8 +550,8 @@ export function OrderDetailScreen({ route, navigation }) {
   const history = order.statusHistory?.length ? order.statusHistory : [{ status: order.status, at: order.updatedAt || order.createdAt }];
   const cancellation = order.cancellationRequest;
   // Đơn "Chờ xác nhận": hủy ngay (kể cả khi đang có yêu cầu cũ còn chờ duyệt). Đơn "Đã xác nhận": gửi yêu cầu.
-  const instantCancel = order.status === 'pending_confirmation' && (!cancellation || cancellation.status === 'pending');
-  const canRequestCancellation = instantCancel || (!cancellation && order.status === 'confirmed');
+  const instantCancel = order.status === ORDER_STATUS.PENDING_CONFIRMATION && (!cancellation || cancellation.status === CANCELLATION_STATUS.PENDING);
+  const canRequestCancellation = instantCancel || (!cancellation && order.status === ORDER_STATUS.CONFIRMED);
   const buyAgain = async () => {
     setReordering(true);
     try {
@@ -570,7 +573,7 @@ export function OrderDetailScreen({ route, navigation }) {
           <Txt v="small" color={colors.inkSoft} style={{ marginTop: 8 }}>Cập nhật {formatDateTime(order.updatedAt || order.createdAt)}</Txt>
         </View>
 
-        {order.status === 'delivered' && (
+        {order.status === ORDER_STATUS.DELIVERED && (
           <View style={s.reorderBox}>
             <View style={{ flex: 1 }}>
               <Txt v="bodyStrong">Bạn muốn mua lại đơn này?</Txt>

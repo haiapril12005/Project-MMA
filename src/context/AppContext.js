@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { ORDER_STATUS } from '../utils';
 
 const Ctx = createContext(null);
 
@@ -389,7 +390,7 @@ export function AppProvider({ children }) {
     try {
       const updatedOrder = await api.orders.requestCancellation({ orderId, reasonCode, reasonDetail });
       setOrders((items) => items.map((item) => (item.id === updatedOrder.id ? updatedOrder : item)));
-      if (updatedOrder.status === 'cancelled') {
+      if (updatedOrder.status === ORDER_STATUS.CANCELLED) {
         // Đơn còn "Chờ xác nhận" được hủy ngay và database đã hoàn kho
         refreshProductsSilently();
         notify('Đã hủy đơn hàng.');
