@@ -9,7 +9,8 @@ import { IconButton, ProductImage, Txt } from './ui';
 // Thẻ sản phẩm dạng lưới 2 cột ở trang chủ
 function ProductCard({ item }) {
   const nav = useNavigation();
-  const { isFav, toggleFavorite } = useApp();
+  const { isFav, toggleFavorite, user } = useApp();
+  const isAdmin = !!user?.isAdmin;
   const fav = isFav(item.id);
   return (
     <View style={s.wrap}>
@@ -17,7 +18,7 @@ function ProductCard({ item }) {
         <Pressable onPress={() => nav.navigate('Detail', { id: item.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${item.name}`} style={({ pressed }) => pressed && { opacity: 0.88 }}>
           <ProductImage uri={item.uri} category={item.category} style={s.img} />
         </Pressable>
-        <IconButton
+        {!isAdmin && <IconButton
           icon={fav ? 'heart' : 'heart-outline'}
           color={fav ? colors.primary : colors.ink}
           bg="rgba(255, 251, 246, 0.92)"
@@ -26,7 +27,7 @@ function ProductCard({ item }) {
           onPress={() => toggleFavorite(item.id)}
           label={fav ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
           style={s.heart}
-        />
+        />}
       </View>
       <Pressable onPress={() => nav.navigate('Detail', { id: item.id })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${item.name}`} style={({ pressed }) => [s.body, pressed && { opacity: 0.75 }]}>
         <Txt v="caption" color={colors.inkMuted}>{item.brand}</Txt>
@@ -38,6 +39,7 @@ function ProductCard({ item }) {
         {item.percentOff > 0 ? (
           <Txt v="small" color={colors.inkMuted} style={{ textDecorationLine: 'line-through', fontSize: 12 }}>{formatVND(item.price)}</Txt>
         ) : <Txt v="small" color={colors.success} style={{ fontSize: 12 }}>Giá tốt mỗi ngày</Txt>}
+        {isAdmin && <Txt v="caption" color={item.stock > 0 ? colors.inkSoft : colors.danger}>{item.stock > 0 ? `Tồn kho: ${item.stock}` : 'Hết hàng'}</Txt>}
       </Pressable>
     </View>
   );

@@ -18,6 +18,10 @@ const productFromRow = (row) => ({
   uri: row.image_url,
   percentOff: Number(row.percent_off || 0),
   stock: Number(row.stock ?? 0),
+  // Tồn kho từng màu: { 'Kem': 3, 'Xám tro': 5 }; rỗng nếu database chưa có bảng product_color_stock
+  colorStock: Object.fromEntries((row.product_color_stock || []).map((item) => [item.color, Number(item.stock)])),
+  warrantyMonths: Number(row.warranty_months ?? 24),
+  costPrice: Number(row.cost_price || 0),
 });
 
 const reviewFromRow = (row) => ({
@@ -79,6 +83,7 @@ const orderFromRow = (row) => {
     originalPrice: Number(item.original_price),
     unitPrice: Number(item.unit_price),
     quantity: Number(item.quantity),
+    warrantyMonths: Number(item.warranty_months ?? 24),
   })),
   shipping: {
     name: row.shipping_name,
@@ -99,12 +104,27 @@ const orderFromRow = (row) => {
   subtotal: Number(row.subtotal),
   discount: Number(row.discount),
   shippingFee: Number(row.shipping_fee),
+  deliveryZone: row.delivery_zone || null,
+  depositAmount: Number(row.deposit_amount || 0),
+  depositStatus: row.deposit_status || 'not_required',
   total: Number(row.total),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   cancellationRequest: cancellationFromRow(cancellationRow),
   });
 };
+
+const collectionFromRow = (row) => ({
+  id: row.id,
+  name: row.name,
+  brand: row.brand,
+  room: row.room,
+  description: row.description || '',
+  productIds: (row.collection_products || [])
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((item) => String(item.product_id)),
+});
 
 const orderSelect = `
   *,
@@ -134,8 +154,38 @@ export const api = {
     },
   },
   products: async () => {
-    const rows = unwrap(await supabase.from('products').select('*').order('id'));
+    const withColors = await supabase.from('products').select('*, product_color_stock(color, stock)').order('id');
+    // Database chưa chạy migration tồn kho theo màu thì vẫn tải được sản phẩm như cũ
+    const rows = withColors.error ? unwrap(await supabase.from('products').select('*').order('id')) : withColors.data;
     return rows.map(productFromRow);
+  },
+  collections: {
+    // Database chưa chạy migration bộ sưu tập thì trả về danh sách rỗng
+    list: async () => {
+      const { data, error } = await supabase
+        .from('collections')
+        .select('*, collection_products(product_id, sort_order)')
+        .order('sort_order');
+      return error ? [] : data.map(collectionFromRow);
+    },
+  },
+  admin: {
+    isAdmin: async () => {
+      const { data, error } = await supabase.rpc('is_admin');
+      return !error && data === true;
+    },
+    dashboard: async (days) => unwrap(await supabase.rpc('admin_dashboard', { p_days: days })),
+    // Admin đọc được mọi đơn nhờ chính sách RLS "admins read all orders"
+    listOrders: async () => {
+      const rows = unwrap(await supabase.from('orders').select(orderSelect).order('created_at', { ascending: false }).limit(100));
+      return rows.map(orderFromRow);
+    },
+    getOrder: async (orderId) => orderFromRow(unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single())),
+    updateStatus: async (orderId, status) => unwrap(await supabase.rpc('admin_update_order_status', { p_order_id: orderId, p_status: status })),
+    markDepositPaid: async (orderId) => unwrap(await supabase.rpc('admin_mark_deposit_paid', { p_order_id: orderId })),
+    reviewCancellation: async (orderId, approve, note) => unwrap(await supabase.rpc('admin_review_cancellation', {
+      p_order_id: orderId, p_approve: approve, p_note: note || '',
+    })),
   },
   account: {
     get: async (authUser) => {
@@ -144,9 +194,12 @@ export const api = {
         unwrap(await supabase.from('cart_items').select('*').eq('user_id', authUser.id).order('created_at')),
         unwrap(await supabase.from('favorites').select('product_id').eq('user_id', authUser.id).order('created_at', { ascending: false })),
       ]);
+      // Database chưa có chức năng admin thì coi như khách thường
+      const isAdmin = await api.admin.isAdmin();
       return {
         id: authUser.id,
         email: authUser.email,
+        isAdmin,
         name: profile.name,
         phone: profile.phone || '',
         address: profile.address || '',
@@ -221,7 +274,7 @@ export const api = {
       const rows = unwrap(await supabase.from('orders').select(orderSelect).eq('user_id', userId).order('created_at', { ascending: false }));
       return rows.map(orderFromRow);
     },
-    place: async ({ shipping, paymentMethod, installation }) => {
+    place: async ({ shipping, paymentMethod, installation, deliveryZone }) => {
       const orderId = unwrap(await supabase.rpc('place_order', {
         p_shipping_name: shipping.name,
         p_shipping_phone: shipping.phone,
@@ -230,12 +283,13 @@ export const api = {
         p_installation_date: installation.date,
         p_installation_time_slot: installation.timeSlot,
         p_installation_note: installation.note || '',
+        p_delivery_zone: deliveryZone,
       }));
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);
     },
     // Mua ngay: đặt đúng 1 sản phẩm, không dùng giỏ hàng
-    placeBuyNow: async ({ item, shipping, paymentMethod, installation }) => {
+    placeBuyNow: async ({ item, shipping, paymentMethod, installation, deliveryZone }) => {
       const orderId = unwrap(await supabase.rpc('place_buy_now_order', {
         p_product_id: Number(item.productId),
         p_selected_color: item.selectedColor || '',
@@ -247,6 +301,7 @@ export const api = {
         p_installation_date: installation.date,
         p_installation_time_slot: installation.timeSlot,
         p_installation_note: installation.note || '',
+        p_delivery_zone: deliveryZone,
       }));
       const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
       return orderFromRow(row);

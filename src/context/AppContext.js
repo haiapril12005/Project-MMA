@@ -1,8 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import { ORDER_STATUS } from '../utils';
+import { colorStockOf, ORDER_STATUS } from '../utils';
 
 const Ctx = createContext(null);
+
+const MIGRATION_MISSING = 'Database chưa cập nhật nghiệp vụ mới. Hãy chạy file supabase/migrations/202611030001_furniture_flows.sql trong Supabase SQL Editor.';
 
 export const useApp = () => {
   const ctx = useContext(Ctx);
@@ -162,6 +164,16 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Kiểm tra lại quyền admin (vừa được cấp trong Supabase thì không cần đăng nhập lại)
+  const refreshAdmin = useCallback(async () => {
+    const current = userRef.current;
+    if (!current) return;
+    const isAdmin = await api.admin.isAdmin();
+    if (userRef.current?.id === current.id && userRef.current.isAdmin !== isAdmin) {
+      setUser({ ...userRef.current, isAdmin });
+    }
+  }, [setUser]);
+
   const updateProfile = async (patch) => {
     const current = userRef.current;
     if (!current) return false;
@@ -245,12 +257,13 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Tồn kho tính chung mọi màu (database cũng kiểm tra như vậy khi đặt hàng):
-  // số lượng tối đa cho 1 dòng = tồn kho - số lượng các màu khác của cùng sản phẩm đang có trong giỏ
+  // Có tồn kho theo màu: tối đa = số còn của màu đó (database cũng kiểm tra khi thêm giỏ và đặt hàng).
+  // Chưa có dữ liệu theo màu: tối đa = tồn kho chung - số lượng các màu khác đang có trong giỏ
   const maxQtyFor = (id, selectedColor, cart = userRef.current?.cart || []) => {
     const productId = String(id);
     const product = products.find((item) => item.id === productId);
     const color = selectedColor || product?.color?.[0] || '';
+    if (product && Object.keys(product.colorStock || {}).length) return Math.max(0, colorStockOf(product, color));
     const otherColors = cart
       .filter((item) => item.productId === productId && item.selectedColor !== color)
       .reduce((sum, item) => sum + item.quantity, 0);
@@ -265,19 +278,19 @@ export function AppProvider({ children }) {
       notify(current ? 'Không tìm thấy sản phẩm' : 'Đăng nhập để thêm sản phẩm vào giỏ');
       return false;
     }
-    const stock = product.stock ?? 99;
+    const color = selectedColor || product.color?.[0] || '';
+    const stock = maxQtyFor(productId, color, current.cart);
     if (stock <= 0) {
-      notify('Sản phẩm đang tạm hết hàng');
+      notify(color ? `Màu ${color} đang tạm hết hàng` : 'Sản phẩm đang tạm hết hàng');
       return false;
     }
-    const color = selectedColor || product.color?.[0] || '';
     const sameLine = (item) => item.productId === productId && item.selectedColor === color;
     const existing = current.cart.find(sameLine);
     const room = maxQtyFor(productId, color, current.cart);
     const wanted = (existing?.quantity || 0) + Math.max(1, qty);
     const quantity = Math.min(room, wanted);
     if (quantity <= (existing?.quantity || 0)) {
-      notify(`Giỏ đã có đủ ${stock} sản phẩm còn trong kho (tính cả các màu)`);
+      notify(`Giỏ đã có đủ ${stock} sản phẩm ${color ? `màu ${color} ` : ''}còn trong kho`);
       return false;
     }
     const cart = existing
@@ -323,6 +336,51 @@ export function AppProvider({ children }) {
     );
   };
 
+  // Thêm nhiều món một lần (ví dụ cả bộ sưu tập): mỗi món 1 cái, màu đầu tiên còn hàng
+  const addItemsToCart = async (productIds) => {
+    const current = userRef.current;
+    if (!current) {
+      notify('Đăng nhập để thêm sản phẩm vào giỏ');
+      return 0;
+    }
+    let cart = current.cart;
+    const writes = [];
+    let skipped = 0;
+    productIds.forEach((id) => {
+      const productId = String(id);
+      const product = products.find((item) => item.id === productId);
+      if (!product) return;
+      const colorsList = product.color?.length ? product.color : [''];
+      const inCart = (c) => cart.find((item) => item.productId === productId && item.selectedColor === c)?.quantity || 0;
+      const color = colorsList.find((c) => maxQtyFor(productId, c, cart) > inCart(c)) ?? colorsList[0];
+      const sameLine = (item) => item.productId === productId && item.selectedColor === color;
+      const existing = cart.find(sameLine);
+      const quantity = Math.min(maxQtyFor(productId, color, cart), (existing?.quantity || 0) + 1);
+      if (quantity <= (existing?.quantity || 0)) {
+        skipped += 1;
+        return;
+      }
+      cart = existing
+        ? cart.map((item) => (sameLine(item) ? { ...item, quantity } : item))
+        : [...cart, { productId, selectedColor: color, quantity }];
+      writes.push({ productId, selectedColor: color, quantity });
+    });
+    if (!writes.length) {
+      notify('Các món trong bộ đã hết hàng hoặc giỏ đã đủ số lượng.');
+      return 0;
+    }
+    const ok = await saveCart(
+      cart,
+      async () => {
+        for (const item of writes) await api.cart.add({ userId: current.id, ...item });
+      },
+      'Không thêm được cả bộ vào giỏ. Vui lòng thử lại.',
+    );
+    if (!ok) return 0;
+    notify(skipped ? `Đã thêm ${writes.length} món vào giỏ, ${skipped} món đã hết hàng.` : `Đã thêm ${writes.length} món vào giỏ hàng.`);
+    return writes.length;
+  };
+
   const clearCart = async () => {
     const current = userRef.current;
     if (!current) return false;
@@ -334,12 +392,12 @@ export function AppProvider({ children }) {
   // ---------- Đơn hàng ----------
   // installation = { date, timeSlot, note }: lịch giao và lắp đặt, bắt buộc cho mọi đơn
   // buyNowItem = { productId, selectedColor, quantity }: "Mua ngay" chỉ đặt món này, giỏ hàng giữ nguyên
-  const placeOrder = async ({ shipping, paymentMethod, installation, buyNowItem = null }) => {
+  const placeOrder = async ({ shipping, paymentMethod, installation, deliveryZone, buyNowItem = null }) => {
     const current = userRef.current;
     if (buyNowItem) {
       if (!current) throw new Error('Bạn cần đăng nhập để đặt hàng.');
       try {
-        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod, installation });
+        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod, installation, deliveryZone });
         setOrders((items) => [order, ...items]);
         refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
         return order;
@@ -348,9 +406,11 @@ export function AppProvider({ children }) {
         console.warn('[Mua ngay] place_buy_now_order lỗi:', e?.code, e?.message);
         const message = String(e?.message || '');
         if (e?.code === 'PGRST202' || message.includes('Could not find the function')) {
-          throw new Error('Database chưa có chức năng Mua ngay. Hãy chạy file supabase/migrations/202611020003_buy_now.sql trong Supabase SQL Editor.');
+          throw new Error(MIGRATION_MISSING);
         }
+        if (message.includes('DELIVERY_ZONE_INVALID')) throw new Error('Chọn khu vực giao hàng để tính phí giao và lắp đặt.');
         if (message.includes('CART_QUANTITY_INVALID')) throw new Error('Số lượng vượt quá hàng còn trong kho. Hãy giảm số lượng rồi thử lại.');
+        if (message.includes('COLOR_STOCK_INVALID')) { refreshProductsSilently(); throw new Error('Màu bạn chọn không còn đủ hàng. Hãy giảm số lượng hoặc chọn màu khác.'); }
         if (message.includes('PRODUCT_NOT_FOUND')) throw new Error('Sản phẩm này đã ngừng bán.');
         if (message.includes('PRODUCT_COLOR_INVALID')) throw new Error('Màu đã chọn không còn bán, hãy chọn màu khác.');
         if (message.includes('SHIPPING_PHONE_INVALID')) throw new Error('Số điện thoại cần từ 9 đến 11 chữ số.');
@@ -363,7 +423,7 @@ export function AppProvider({ children }) {
     }
     if (!current || !current.cart.length) throw new Error('Giỏ hàng đang trống.');
     try {
-      const order = await api.orders.place({ shipping, paymentMethod, installation });
+      const order = await api.orders.place({ shipping, paymentMethod, installation, deliveryZone });
       setOrders((items) => [order, ...items]);
       setUser({ ...current, cart: [] });
       refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
@@ -371,6 +431,12 @@ export function AppProvider({ children }) {
     } catch (e) {
       console.warn('[Đặt hàng] place_order lỗi:', e?.code, e?.message);
       const message = String(e?.message || '');
+      if (e?.code === 'PGRST202' || message.includes('Could not find the function')) throw new Error(MIGRATION_MISSING);
+      if (message.includes('DELIVERY_ZONE_INVALID')) throw new Error('Chọn khu vực giao hàng để tính phí giao và lắp đặt.');
+      if (message.includes('COLOR_STOCK_INVALID')) {
+        refreshProductsSilently();
+        throw new Error('Có màu trong giỏ không còn đủ hàng. Hãy giảm số lượng hoặc chọn màu khác.');
+      }
       if (message.includes('CART_QUANTITY_INVALID')) {
         refreshProductsSilently();
         throw new Error('Có sản phẩm trong giỏ vượt quá số lượng còn trong kho (tính chung mọi màu). Hãy giảm số lượng rồi thử lại.');
@@ -433,9 +499,9 @@ export function AppProvider({ children }) {
     <Ctx.Provider
       value={{
         products, loading, error, loadProducts, user, ready,
-        login, register, resendConfirmation, logout, updateProfile, changePassword,
+        login, register, resendConfirmation, logout, updateProfile, changePassword, refreshAdmin,
         favorites, isFav, toggleFavorite, clearFavorites,
-        addToCart, setQty, removeFromCart, clearCart, cartCount, maxQtyFor,
+        addToCart, addItemsToCart, setQty, removeFromCart, clearCart, cartCount, maxQtyFor,
         orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation, reorderOrder,
         toast, notify,
       }}

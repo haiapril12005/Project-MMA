@@ -20,6 +20,7 @@ export const ORDER_STATUS = {
   CONFIRMED: 'confirmed',
   PREPARING: 'preparing',
   SHIPPING: 'shipping',
+  INSTALLING: 'installing',
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled',
 };
@@ -40,6 +41,41 @@ export const PAYMENT_METHODS = [
   { key: PAYMENT_METHOD.BANK_TRANSFER, label: 'Chuyển khoản ngân hàng', icon: 'bank-outline', note: 'Cửa hàng sẽ liên hệ gửi hướng dẫn thanh toán.' },
 ];
 
+// Phí giao, đặt cọc và bảo hành phải khớp migration 202611030001_furniture_flows.sql (database tính lại khi đặt hàng)
+export const DELIVERY_ZONES = [
+  { key: 'inner_city', label: 'Nội thành TP.HCM, Hà Nội', fee: 0, icon: 'city-variant-outline' },
+  { key: 'suburban', label: 'Ngoại thành TP.HCM, Hà Nội', fee: 300000, icon: 'home-group' },
+  { key: 'province', label: 'Tỉnh/thành khác', fee: 800000, icon: 'truck-fast-outline' },
+];
+export const deliveryZone = (key) => DELIVERY_ZONES.find((zone) => zone.key === key) || null;
+
+export const DEPOSIT_THRESHOLD = 20000000;
+// Cọc 30%, làm tròn lên nghìn đồng (tính bằng số nguyên để tránh sai số số thực)
+export const depositFor = (total) => (total >= DEPOSIT_THRESHOLD ? Math.ceil((total * 3) / 10000) * 1000 : 0);
+
+export const DEPOSIT_STATUS = {
+  NOT_REQUIRED: 'not_required',
+  AWAITING: 'awaiting',
+  PAID: 'paid',
+  REFUNDED: 'refunded',
+  CANCELLED: 'cancelled',
+};
+
+export const DEPOSIT_STATUSES = {
+  awaiting: { label: 'Chờ chuyển cọc', color: '#9A5B2E' },
+  paid: { label: 'Đã nhận cọc', color: '#2F7250' },
+  refunded: { label: 'Hoàn cọc trong 3–5 ngày làm việc', color: '#47708A' },
+  cancelled: { label: 'Đơn đã hủy, không cần cọc', color: '#6B6B6B' },
+};
+
+// Ngày hết bảo hành = ngày giao xong + số tháng bảo hành
+export const warrantyEndDate = (deliveredAt, months) => {
+  if (!deliveredAt || !months) return '';
+  const date = new Date(deliveredAt);
+  date.setMonth(date.getMonth() + months);
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 export const INSTALLATION_TIME_SLOTS = [
   { key: '08:00-12:00', label: 'Buổi sáng', note: '08:00–12:00', icon: 'weather-sunny' },
   { key: '13:00-17:00', label: 'Buổi chiều', note: '13:00–17:00', icon: 'weather-sunset' },
@@ -50,7 +86,8 @@ export const ORDER_STATUSES = {
   confirmed: { label: 'Đã xác nhận', color: '#47708A', bg: '#E1EDF3', icon: 'check-circle-outline' },
   preparing: { label: 'Đang chuẩn bị', color: '#79652F', bg: '#F2ECD8', icon: 'package-variant-closed' },
   shipping: { label: 'Đang giao', color: '#356B58', bg: '#DDEDE6', icon: 'truck-delivery-outline' },
-  delivered: { label: 'Đã giao', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
+  installing: { label: 'Đang lắp đặt', color: '#5B5A8E', bg: '#E6E5F2', icon: 'tools' },
+  delivered: { label: 'Đã giao & lắp đặt', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
   cancelled: { label: 'Đã hủy', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
 };
 
@@ -72,6 +109,20 @@ export const vietnamDateISO = (date = new Date()) => {
 };
 
 export const earliestInstallationDate = () => vietnamDateISO(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+// Các ngày có thể chọn để giao và lắp đặt: từ ngày mai, liên tiếp `count` ngày (giờ Việt Nam)
+const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+export const installationDateOptions = (count = 14) => {
+  const [year, month, day] = earliestInstallationDate().split('-').map(Number);
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 1, day + index));
+    return {
+      value: date.toISOString().slice(0, 10),
+      weekday: WEEKDAYS[date.getUTCDay()],
+      label: `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`,
+    };
+  });
+};
 
 export const isValidISODate = (value) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
@@ -96,6 +147,14 @@ export const SWATCHES = {
 };
 
 export const formatVND = (n) => `${String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+// Số lượng còn của một màu; sản phẩm chưa có dữ liệu theo màu thì dùng tồn kho chung
+export const colorStockOf = (product, color) => {
+  if (!product) return 0;
+  const byColor = product.colorStock || {};
+  if (!Object.keys(byColor).length) return product.stock ?? 0;
+  return byColor[color || product.color?.[0] || ''] ?? 0;
+};
+
 export const finalPrice = (p) => Math.round(p.price * (1 - (p.percentOff || 0)));
 export const percentLabel = (p) => `-${Math.round((p.percentOff || 0) * 100)}%`;
 

@@ -29,7 +29,13 @@ Project cần chạy chín file theo đúng thứ tự trong **Supabase Dashboar
 6. `supabase/migrations/202611020001_instant_cancel.sql`
 7. `supabase/migrations/202611020002_stock_on_order.sql`
 8. `supabase/migrations/202611020003_buy_now.sql`
-9. `supabase/seed.sql`
+9. `supabase/migrations/202611030001_furniture_flows.sql`
+10. `supabase/migrations/202611030002_color_stock.sql`
+11. `supabase/migrations/202611030003_collections_admin.sql`
+12. `supabase/migrations/202611030004_admin_orders.sql`
+13. `supabase/migrations/202611030005_deposit_approves_order.sql` (admin bấm "Đã nhận cọc" là đơn tự chuyển sang Đã xác nhận)
+14. `supabase/migrations/202611030006_dashboard_deposits.sql` (thống kê tiền cọc; chạy lại file này nếu lỡ chạy lại 0003/0004)
+15. `supabase/seed.sql` (database mới tạo: chạy lại `202611030003` sau seed để gắn sản phẩm vào bộ sưu tập)
 
 Migration tạo các bảng nghiệp vụ, trigger, RLS và các RPC đặt/hủy đơn/đánh giá. Seed chỉ thêm 40 sản phẩm; không tạo tài khoản, đơn hàng hoặc đánh giá giả. Migration đánh giá sẽ xóa đánh giá mẫu ẩn danh và các đánh giá cũ không chứng minh được bằng một đơn đã giao.
 
@@ -40,6 +46,20 @@ Sau đó chạy `202611010002_delivery_installation.sql`. Migration này giữ n
 Tiếp theo chạy `202611010003_reorder.sql` để bật RPC mua lại an toàn cho các đơn `delivered`.
 
 Cuối cùng chạy lần lượt `202611020001_instant_cancel.sql` (hủy ngay đơn còn chờ xác nhận), `202611020002_stock_on_order.sql` (trừ/hoàn tồn kho, phải chạy sau `202611010002_delivery_installation.sql`) và `202611020003_buy_now.sql` (Mua ngay). Các file này chạy lại nhiều lần vẫn an toàn và tự xóa các bản hàm cũ không còn dùng.
+
+Sau cùng chạy `202611030001_furniture_flows.sql`: phí giao theo khu vực (nội thành miễn phí, ngoại thành 300.000đ, tỉnh khác 800.000đ), đặt cọc 30% cho đơn từ 20 triệu (cửa hàng chỉ xác nhận được đơn khi `deposit_status = 'paid'`), trạng thái `installing` (Đang lắp đặt) và bảo hành theo sản phẩm. Nếu sau đó lỡ chạy lại `202611020002` hoặc `202611020003` thì chạy lại `202611030001` để khóa các hàm đặt hàng cũ.
+
+Tiếp theo chạy `202611030002_color_stock.sql`: tồn kho theo từng màu nằm ở bảng `product_color_stock` (lần đầu chạy, tồn kho hiện có được chia đều cho các màu). `products.stock` tự động bằng tổng các màu, nên muốn đổi tồn kho thì sửa trong bảng `product_color_stock`.
+
+Cuối cùng chạy `202611030003_collections_admin.sql`: bộ sưu tập theo thương hiệu (bảng `collections`, `collection_products`), giá vốn `products.cost_price` (mẫu = 60% giá niêm yết) và thống kê cho admin (RPC `admin_dashboard`). Cấp quyền admin cho một tài khoản bằng SQL Editor:
+
+```sql
+insert into public.admins (user_id)
+select id from auth.users where email = 'email-tai-khoan-admin@example.com'
+on conflict do nothing;
+```
+
+Sau đó chạy `202611030004_admin_orders.sql`: admin xem mọi đơn và thao tác ngay trong app (Tài khoản → Quản trị cửa hàng → Quản lý đơn hàng): chuyển trạng thái theo đúng luồng, xác nhận đã nhận cọc, duyệt/từ chối yêu cầu hủy, cửa hàng hủy đơn; màn Thống kê có thêm biểu đồ thu chi theo ngày/tháng.
 
 Khi sửa `src/data/seed.js`, chạy:
 

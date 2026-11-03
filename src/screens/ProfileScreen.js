@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
@@ -8,7 +9,10 @@ import { Button, Icon, Txt } from '../components/ui';
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, logout, cartCount, favorites, orders } = useApp();
+  const { user, logout, cartCount, favorites, orders, refreshAdmin } = useApp();
+
+  // Quyền admin vừa được cấp trên Supabase sẽ hiện ra khi mở lại tab Tài khoản
+  useFocusEffect(useCallback(() => { refreshAdmin(); }, [refreshAdmin]));
 
   if (!user) {
     return (
@@ -35,9 +39,14 @@ export default function ProfileScreen({ navigation }) {
         <View style={{ flex: 1 }}>
           <Txt v="subtitle" numberOfLines={1}>{user.name}</Txt>
           <Txt v="small" color={colors.inkSoft} numberOfLines={1}>{user.email}</Txt>
+          <View style={[s.role, user.isAdmin && { backgroundColor: colors.primary }]}>
+            <Icon name={user.isAdmin ? 'shield-account' : 'account'} size={13} color={user.isAdmin ? colors.onPrimary : colors.primary} />
+            <Txt v="caption" color={user.isAdmin ? colors.onPrimary : colors.primary}>{user.isAdmin ? 'Quản trị viên' : 'Khách hàng'}</Txt>
+          </View>
         </View>
       </View>
 
+      {!user.isAdmin && (
       <View style={s.stats}>
         <Pressable style={s.stat} onPress={() => navigation.navigate('Favorites')} accessibilityRole="button" accessibilityLabel={`${favorites.length} sản phẩm yêu thích`}>
           <Txt v="title" color={colors.primary}>{favorites.length}</Txt>
@@ -48,16 +57,31 @@ export default function ProfileScreen({ navigation }) {
           <Txt v="caption" color={colors.inkSoft}>Trong giỏ</Txt>
         </Pressable>
       </View>
+      )}
 
-      <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Thông tin giao hàng</Txt>
-      <View style={s.group}>
-        <Cell icon="phone-outline" title="Số điện thoại" value={user.phone || 'Chưa cập nhật'} />
-        <Cell icon="map-marker-outline" title="Địa chỉ" value={user.address || 'Chưa cập nhật'} last />
-      </View>
+      {user.isAdmin && (
+        <>
+          <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Quản trị cửa hàng</Txt>
+          <View style={s.group}>
+            <Cell icon="chart-box-outline" title="Thống kê thu chi" value="Thu, chi, lợi nhuận, lịch giao" onPress={() => navigation.navigate('AdminStats')} />
+            <Cell icon="clipboard-list-outline" title="Quản lý đơn hàng" value="Đổi trạng thái, nhận cọc, duyệt hủy" onPress={() => navigation.navigate('AdminOrders')} last />
+          </View>
+        </>
+      )}
+
+      {!user.isAdmin && (
+        <>
+          <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Thông tin giao hàng</Txt>
+          <View style={s.group}>
+            <Cell icon="phone-outline" title="Số điện thoại" value={user.phone || 'Chưa cập nhật'} />
+            <Cell icon="map-marker-outline" title="Địa chỉ" value={user.address || 'Chưa cập nhật'} last />
+          </View>
+        </>
+      )}
 
       <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Cài đặt</Txt>
       <View style={s.group}>
-        <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" value={`${orders.length} đơn hàng`} onPress={() => navigation.navigate('OrderHistory')} />
+        {!user.isAdmin && <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" value={`${orders.length} đơn hàng`} onPress={() => navigation.navigate('OrderHistory')} />}
         <Cell icon="account-edit-outline" title="Sửa thông tin" onPress={() => navigation.navigate('EditProfile')} />
         <Cell icon="lock-outline" title="Đổi mật khẩu" onPress={() => navigation.navigate('ChangePassword')} last />
       </View>
@@ -81,6 +105,7 @@ function Cell({ icon, title, value, onPress, last }) {
 }
 
 const s = StyleSheet.create({
+  role: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4, marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.primarySoft },
   guest: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 8 },
   guestIcon: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: colors.surface, borderRadius: radius.card, padding: 18 },

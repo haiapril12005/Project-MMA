@@ -13,12 +13,29 @@ import ProfileScreen from '../screens/ProfileScreen';
 import DetailScreen from '../screens/DetailScreen';
 import { LoginScreen, RegisterScreen, EditProfileScreen, ChangePasswordScreen } from '../screens/AuthScreens';
 import { CheckoutScreen, OrderSuccessScreen, OrderHistoryScreen, OrderDetailScreen } from '../screens/OrderScreens';
+import CollectionScreen from '../screens/CollectionScreen';
+import AdminScreen from '../screens/AdminScreen';
+import { AdminOrderScreen, AdminOrdersScreen } from '../screens/AdminOrdersScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// 4 tab chính: Trang chủ, Yêu thích, Giỏ hàng, Tài khoản
+// Admin: Tổng quan (thống kê), Đơn hàng (quản lý), Sản phẩm, Tài khoản
+function AdminTabs() {
+  return (
+    <Tab.Navigator screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }} tabBar={(props) => <TabBar {...props} />}>
+      <Tab.Screen name="AdminHome" component={AdminScreen} initialParams={{ tab: true }} />
+      <Tab.Screen name="AdminOrdersTab" component={AdminOrdersScreen} initialParams={{ tab: true }} />
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+// Khách hàng: Trang chủ, Yêu thích, Giỏ hàng, Tài khoản
 function Tabs() {
+  const { user } = useApp();
+  if (user?.isAdmin) return <AdminTabs />;
   return (
     <Tab.Navigator screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }} tabBar={(props) => <TabBar {...props} />}>
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -53,6 +70,10 @@ export default function RootNavigator() {
       <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} options={{ gestureEnabled: false }} />
       <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+      <Stack.Screen name="Collection" component={CollectionScreen} />
+      <Stack.Screen name="AdminStats" component={AdminScreen} />
+      <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} />
+      <Stack.Screen name="AdminOrder" component={AdminOrderScreen} />
     </Stack.Navigator>
   );
 }

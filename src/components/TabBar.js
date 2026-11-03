@@ -10,19 +10,23 @@ const TABS = {
   Favorites: { label: 'Yêu thích', icon: 'heart-outline', active: 'heart' },
   Cart: { label: 'Giỏ hàng', icon: 'cart-outline', active: 'cart' },
   Profile: { label: 'Tài khoản', icon: 'account-outline', active: 'account' },
+  AdminHome: { label: 'Tổng quan', icon: 'chart-box-outline', active: 'chart-box' },
+  AdminOrdersTab: { label: 'Đơn hàng', icon: 'clipboard-list-outline', active: 'clipboard-list' },
 };
+// Admin vẫn dùng tab "Home" (để các nút quay về trang chủ chạy đúng) nhưng hiện là "Sản phẩm"
+const ADMIN_HOME = { label: 'Sản phẩm', icon: 'sofa-outline', active: 'sofa' };
 
 // Thanh tab dưới cùng tự thiết kế: tab đang chọn có nền viên thuốc màu nhấn nhạt
 export default function TabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
-  const { cartCount, favorites } = useApp();
+  const { cartCount, favorites, user } = useApp();
   const badges = { Cart: cartCount, Favorites: favorites.length };
 
   return (
     <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       {state.routes.map((route, index) => {
         const focused = state.index === index;
-        const t = TABS[route.name];
+        const t = user?.isAdmin && route.name === 'Home' ? ADMIN_HOME : TABS[route.name];
         const badge = badges[route.name];
         const onPress = () => {
           const e = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });

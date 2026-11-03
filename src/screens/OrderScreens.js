@@ -6,19 +6,27 @@ import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
 import {
   CANCELLATION_STATUS,
+  DELIVERY_ZONES,
+  DEPOSIT_STATUS,
+  DEPOSIT_STATUSES,
+  deliveryZone as findDeliveryZone,
+  depositFor,
   earliestInstallationDate,
   formatDateOnly,
   formatDateTime,
   formatVND,
   INSTALLATION_TIME_SLOTS,
+  installationDateOptions,
   isValidISODate,
   ORDER_STATUS,
   orderStatus,
   PAYMENT_METHOD,
   PAYMENT_METHODS,
   paymentLabel,
+  warrantyEndDate,
 } from '../utils';
 import { Button, EmptyState, Field, Icon, IconButton, ProductImage, Skeleton, Txt } from '../components/ui';
+import DemoQR from '../components/DemoQR';
 
 const CANCELLATION_REASONS = [
   { key: 'wrong_item', label: 'Đặt nhầm sản phẩm, màu hoặc số lượng' },
@@ -77,6 +85,27 @@ function SummaryLine({ label, value, color = colors.ink, strong = false }) {
     <View style={s.summaryLine}>
       <Txt v={strong ? 'subtitle' : 'small'} color={strong ? colors.ink : colors.inkSoft}>{label}</Txt>
       <Txt v={strong ? 'title' : 'small'} color={color}>{value}</Txt>
+    </View>
+  );
+}
+
+// Khung chuyển khoản tiền cọc: mã QR minh họa + số tiền + nội dung chuyển khoản
+function DepositPayment({ order }) {
+  const transferNote = `COC ${order.code.replace(/-/g, '')}`;
+  return (
+    <View style={s.depositBox}>
+      <Txt v="subtitle">Chuyển khoản tiền cọc</Txt>
+      <Txt v="small" color={colors.inkSoft} style={{ textAlign: 'center' }}>Quét mã bằng ứng dụng ngân hàng để cọc 30% giá trị đơn.</Txt>
+      <DemoQR value={transferNote} />
+      <Txt v="caption" color={colors.inkMuted}>Mã QR minh họa (bản demo)</Txt>
+      <View style={{ alignSelf: 'stretch', gap: 6 }}>
+        <SummaryLine label="Số tiền cọc" value={formatVND(order.depositAmount)} color={colors.primary} strong />
+        <SummaryLine label="Nội dung chuyển khoản" value={transferNote} />
+      </View>
+      <View style={[s.infoBox, { marginTop: 4, alignSelf: 'stretch' }]}>
+        <Icon name="information-outline" color={colors.primary} />
+        <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Khi cửa hàng xác nhận đã nhận cọc, đơn sẽ tự chuyển sang "Đã xác nhận" và được chuẩn bị giao.</Txt>
+      </View>
     </View>
   );
 }
@@ -209,8 +238,10 @@ export function CheckoutScreen({ route, navigation }) {
   const [saveAsDefault, setSaveAsDefault] = useState(!user?.phone || !user?.address);
   const [installationDate, setInstallationDate] = useState(earliestInstallationDate());
   const [installationTimeSlot, setInstallationTimeSlot] = useState('');
+  const dateOptions = useMemo(() => installationDateOptions(14), []);
   const [installationNote, setInstallationNote] = useState('');
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHOD.COD);
+  const [zoneKey, setZoneKey] = useState('');
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -220,8 +251,12 @@ export function CheckoutScreen({ route, navigation }) {
     return product ? { ...c, product, selectedColor: c.selectedColor || product.color?.[0] || '' } : null;
   }).filter(Boolean), [buyNow, user?.cart, products]);
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
-  const total = items.reduce((sum, i) => sum + Math.round(i.product.price * (1 - i.product.percentOff)) * i.quantity, 0);
-  const discount = subtotal - total;
+  const itemsTotal = items.reduce((sum, i) => sum + Math.round(i.product.price * (1 - i.product.percentOff)) * i.quantity, 0);
+  const discount = subtotal - itemsTotal;
+  const zone = findDeliveryZone(zoneKey);
+  const shippingFee = zone?.fee || 0;
+  const total = itemsTotal + shippingFee;
+  const deposit = depositFor(total);
 
   const set = (key) => (value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -238,6 +273,7 @@ export function CheckoutScreen({ route, navigation }) {
     if (!isValidISODate(installationDate) || installationDate < earliestInstallationDate()) {
       nextErrors.installationDate = `Chọn ngày từ ${formatDateOnly(earliestInstallationDate())}.`;
     }
+    if (!zone) nextErrors.zone = 'Chọn khu vực giao hàng.';
     if (!INSTALLATION_TIME_SLOTS.some((slot) => slot.key === installationTimeSlot)) {
       nextErrors.installationTimeSlot = 'Chọn khung giờ giao và lắp đặt.';
     }
@@ -250,6 +286,7 @@ export function CheckoutScreen({ route, navigation }) {
       const order = await placeOrder({
         shipping: { name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() },
         paymentMethod,
+        deliveryZone: zoneKey,
         installation: {
           date: installationDate,
           timeSlot: installationTimeSlot,
@@ -279,7 +316,7 @@ export function CheckoutScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScreenHeader title={buyNow ? 'Mua ngay' : 'Đặt hàng'} subtitle={buyNow ? 'Chỉ đặt sản phẩm này, giỏ hàng giữ nguyên' : `${items.length} sản phẩm`} navigation={navigation} />
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: 190 + insets.bottom }}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: 230 + insets.bottom }}>
         <SectionTitle icon="map-marker-outline" title="Thông tin nhận hàng" />
         <View style={s.card}>
           <Field label="Tên người nhận" value={form.name} onChangeText={set('name')} error={errors.name} placeholder="Nguyễn Văn An" />
@@ -299,18 +336,57 @@ export function CheckoutScreen({ route, navigation }) {
           </Pressable>
         </View>
 
+        <SectionTitle icon="truck-delivery-outline" title="Khu vực giao và lắp đặt" />
+        <View style={{ gap: 10 }}>
+          {DELIVERY_ZONES.map((item) => {
+            const selected = zoneKey === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => { setZoneKey(item.key); setErrors((current) => ({ ...current, zone: undefined })); }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={item.label}
+                style={[s.scheduleOption, selected && s.scheduleOptionOn]}
+              >
+                <View style={[s.paymentIcon, selected && { backgroundColor: colors.primary }]}><Icon name={item.icon} color={selected ? colors.onPrimary : colors.primary} /></View>
+                <View style={{ flex: 1 }}>
+                  <Txt v="bodyStrong">{item.label}</Txt>
+                  <Txt v="small" color={item.fee ? colors.inkSoft : colors.success}>{item.fee ? `Phí giao và lắp đặt ${formatVND(item.fee)}` : 'Miễn phí giao và lắp đặt'}</Txt>
+                </View>
+                <Icon name={selected ? 'radiobox-marked' : 'radiobox-blank'} color={selected ? colors.primary : colors.inkMuted} />
+              </Pressable>
+            );
+          })}
+          {!!errors.zone && <Txt v="small" color={colors.danger}>{errors.zone}</Txt>}
+        </View>
+
         <SectionTitle icon="calendar-clock" title="Lịch giao và lắp đặt" />
         <View style={s.card}>
-          <Field
-            label="Ngày mong muốn (YYYY-MM-DD)"
-            value={installationDate}
-            onChangeText={(value) => { setInstallationDate(value); setErrors((current) => ({ ...current, installationDate: undefined })); }}
-            error={errors.installationDate}
-            helper={`Sớm nhất: ${formatDateOnly(earliestInstallationDate())}`}
-            placeholder={earliestInstallationDate()}
-            keyboardType={Platform.OS === 'web' ? undefined : 'number-pad'}
-            {...(Platform.OS === 'web' ? { type: 'date', min: earliestInstallationDate() } : {})}
-          />
+          <View style={{ gap: 8 }}>
+            <Txt v="bodyStrong" style={{ fontSize: 14 }}>Ngày giao và lắp đặt</Txt>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {dateOptions.map((option) => {
+                const selected = installationDate === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => { setInstallationDate(option.value); setErrors((current) => ({ ...current, installationDate: undefined })); }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={formatDateOnly(option.value)}
+                    style={[s.dateChip, selected && s.dateChipOn]}
+                  >
+                    <Txt v="caption" color={selected ? colors.onPrimary : colors.inkSoft}>{option.weekday}</Txt>
+                    <Txt v="bodyStrong" color={selected ? colors.onPrimary : colors.ink}>{option.label}</Txt>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <Txt v="small" color={errors.installationDate ? colors.danger : colors.inkSoft}>
+              {errors.installationDate || `Đã chọn: ${formatDateOnly(installationDate)}`}
+            </Txt>
+          </View>
           <Txt v="bodyStrong" style={{ fontSize: 14 }}>Khung giờ lắp đặt</Txt>
           <View style={{ gap: 10 }}>
             {INSTALLATION_TIME_SLOTS.map((slot) => {
@@ -374,6 +450,15 @@ export function CheckoutScreen({ route, navigation }) {
           })}
         </View>
 
+        {deposit > 0 && (
+          <View style={s.infoBox}>
+            <Icon name="cash-lock" color={colors.primary} />
+            <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>
+              Đơn từ {formatVND(20000000)} cần đặt cọc 30% ({formatVND(deposit)}) bằng chuyển khoản. Cửa hàng chỉ xác nhận đơn sau khi nhận cọc; phần còn lại thanh toán theo phương thức bạn chọn.
+            </Txt>
+          </View>
+        )}
+
         <SectionTitle icon="package-variant-closed" title="Sản phẩm" />
         <View style={s.card}>
           {items.map(({ product: p, quantity, selectedColor }, index) => (
@@ -392,8 +477,13 @@ export function CheckoutScreen({ route, navigation }) {
       <View style={[s.checkoutBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <SummaryLine label="Tạm tính" value={formatVND(subtotal)} />
         {discount > 0 && <SummaryLine label="Giảm giá" value={`-${formatVND(discount)}`} color={colors.success} />}
-        <SummaryLine label="Giao hàng và lắp đặt" value="Miễn phí" color={colors.success} />
+        <SummaryLine
+          label="Giao hàng và lắp đặt"
+          value={!zone ? 'Chọn khu vực' : shippingFee ? formatVND(shippingFee) : 'Miễn phí'}
+          color={!zone ? colors.inkMuted : shippingFee ? colors.ink : colors.success}
+        />
         <SummaryLine label="Tổng thanh toán" value={formatVND(total)} color={colors.primary} strong />
+        {deposit > 0 && <SummaryLine label="Đặt cọc trước (30%)" value={formatVND(deposit)} color={colors.primary} />}
         {!!formError && <Txt v="small" color={colors.danger} style={{ marginBottom: 8 }}>{formError}</Txt>}
         <Button title="Xác nhận đặt hàng" icon="check" loading={busy} onPress={submit} />
       </View>
@@ -422,8 +512,12 @@ export function OrderSuccessScreen({ route, navigation }) {
         <SummaryLine label="Trạng thái" value={orderStatus(order.status).label} color={orderStatus(order.status).color} />
         <SummaryLine label="Thanh toán" value={paymentLabel(order.paymentMethod)} />
         {!!order.installation && <SummaryLine label="Lịch lắp đặt" value={`${formatDateOnly(order.installation.date)} · ${order.installation.timeSlot}`} />}
+        {!!order.deliveryZone && <SummaryLine label="Khu vực giao" value={findDeliveryZone(order.deliveryZone)?.label || ''} />}
         <SummaryLine label="Tổng cộng" value={formatVND(order.total)} color={colors.primary} />
+        {order.depositAmount > 0 && <SummaryLine label="Cần đặt cọc (30%)" value={formatVND(order.depositAmount)} color={colors.primary} />}
       </View>
+
+      {order.depositStatus === DEPOSIT_STATUS.AWAITING && <DepositPayment order={order} />}
 
       {order.paymentMethod === PAYMENT_METHOD.BANK_TRANSFER && (
         <View style={s.infoBox}>
@@ -533,7 +627,7 @@ export function OrderHistoryScreen({ navigation }) {
 
 export function OrderDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
-  const { orders, requestOrderCancellation, reorderOrder, notify } = useApp();
+  const { user, orders, ordersLoading, loadOrders, requestOrderCancellation, reorderOrder, notify } = useApp();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [reordering, setReordering] = useState(false);
   const order = orders.find((o) => o.id === String(route.params?.id));
@@ -549,6 +643,9 @@ export function OrderDetailScreen({ route, navigation }) {
 
   const history = order.statusHistory?.length ? order.statusHistory : [{ status: order.status, at: order.updatedAt || order.createdAt }];
   const cancellation = order.cancellationRequest;
+  const zone = findDeliveryZone(order.deliveryZone);
+  const deliveredAt = history.find((event) => event.status === ORDER_STATUS.DELIVERED)?.at;
+  const depositInfo = DEPOSIT_STATUSES[order.depositStatus];
   // Đơn "Chờ xác nhận": hủy ngay (kể cả khi đang có yêu cầu cũ còn chờ duyệt). Đơn "Đã xác nhận": gửi yêu cầu.
   const instantCancel = order.status === ORDER_STATUS.PENDING_CONFIRMATION && (!cancellation || cancellation.status === CANCELLATION_STATUS.PENDING);
   const canRequestCancellation = instantCancel || (!cancellation && order.status === ORDER_STATUS.CONFIRMED);
@@ -567,11 +664,17 @@ export function OrderDetailScreen({ route, navigation }) {
   return (
     <View style={s.screen}>
       <ScreenHeader title="Chi tiết đơn" subtitle={order.code} navigation={navigation} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: insets.bottom + 36 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: insets.bottom + 36 }}
+        refreshControl={<RefreshControl refreshing={ordersLoading} onRefresh={() => user && loadOrders(user.id)} tintColor={colors.primary} colors={[colors.primary]} />}
+      >
         <View style={s.heroStatus}>
           <StatusPill value={order.status} style={{ alignSelf: 'center' }} />
           <Txt v="small" color={colors.inkSoft} style={{ marginTop: 8 }}>Cập nhật {formatDateTime(order.updatedAt || order.createdAt)}</Txt>
         </View>
+
+        {order.depositStatus === DEPOSIT_STATUS.AWAITING && <DepositPayment order={order} />}
 
         {order.status === ORDER_STATUS.DELIVERED && (
           <View style={s.reorderBox}>
@@ -634,7 +737,8 @@ export function OrderDetailScreen({ route, navigation }) {
         <View style={s.card}>
           <InfoRow icon="account-outline" label="Người nhận" value={order.shipping.name} />
           <InfoRow icon="phone-outline" label="Số điện thoại" value={order.shipping.phone} />
-          <InfoRow icon="map-marker-outline" label="Địa chỉ" value={order.shipping.address} last />
+          <InfoRow icon="map-marker-outline" label="Địa chỉ" value={order.shipping.address} last={!zone} />
+          {!!zone && <InfoRow icon={zone.icon} label="Khu vực giao" value={zone.label} last />}
         </View>
 
         {!!order.installation && (
@@ -655,14 +759,27 @@ export function OrderDetailScreen({ route, navigation }) {
         <SectionTitle icon="package-variant-closed" title={`Sản phẩm (${order.items.length})`} />
         <View style={s.card}>
           {order.items.map((item, index) => (
-            <View key={`${item.productId}:${item.selectedColor}`} style={[s.checkoutItem, index < order.items.length - 1 && s.divider]}>
+            <Pressable
+              key={`${item.productId}:${item.selectedColor}`}
+              onPress={() => navigation.push('Detail', { id: item.productId, color: item.selectedColor })}
+              accessibilityRole="button"
+              accessibilityLabel={`Xem chi tiết ${item.name}`}
+              style={({ pressed }) => [s.checkoutItem, index < order.items.length - 1 && s.divider, pressed && { opacity: 0.7 }]}
+            >
               <ProductImage uri={item.uri} category={item.category} iconSize={25} style={s.checkoutImage} />
               <View style={{ flex: 1 }}>
                 <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{item.name}</Txt>
                 <Txt v="caption" color={colors.inkSoft}>{item.selectedColor || 'Mặc định'} · SL {item.quantity}</Txt>
+                <Txt v="caption" color={colors.success}>
+                  {!item.warrantyMonths
+                    ? 'Không bảo hành'
+                    : deliveredAt
+                      ? `Bảo hành đến ${warrantyEndDate(deliveredAt, item.warrantyMonths)}`
+                      : `Bảo hành ${item.warrantyMonths} tháng kể từ ngày lắp đặt`}
+                </Txt>
               </View>
               <Txt v="price" color={colors.primary} style={{ fontSize: 14 }}>{formatVND(item.unitPrice * item.quantity)}</Txt>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -671,9 +788,11 @@ export function OrderDetailScreen({ route, navigation }) {
           <SummaryLine label="Phương thức" value={paymentLabel(order.paymentMethod)} />
           <SummaryLine label="Tạm tính" value={formatVND(order.subtotal)} />
           {order.discount > 0 && <SummaryLine label="Giảm giá" value={`-${formatVND(order.discount)}`} color={colors.success} />}
-          <SummaryLine label="Giao hàng và lắp đặt" value="Miễn phí" color={colors.success} />
+          <SummaryLine label="Giao hàng và lắp đặt" value={order.shippingFee > 0 ? formatVND(order.shippingFee) : 'Miễn phí'} color={order.shippingFee > 0 ? colors.ink : colors.success} />
           <View style={[s.divider, { marginVertical: 10 }]} />
           <SummaryLine label="Tổng cộng" value={formatVND(order.total)} color={colors.primary} strong />
+          {order.depositAmount > 0 && <SummaryLine label="Đặt cọc (30%)" value={formatVND(order.depositAmount)} />}
+          {order.depositAmount > 0 && !!depositInfo && <SummaryLine label="Tình trạng cọc" value={depositInfo.label} color={depositInfo.color} />}
         </View>
       </ScrollView>
       <CancelOrderModal
@@ -716,6 +835,8 @@ const s = StyleSheet.create({
   paymentOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   paymentIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
   saveAddressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: colors.bg, paddingTop: 12 },
+  dateChip: { width: 64, alignItems: 'center', gap: 2, paddingVertical: 10, borderRadius: radius.card, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  dateChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   scheduleOption: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: colors.line, borderRadius: radius.card, padding: 12, backgroundColor: colors.surface },
   scheduleOptionOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   scheduleNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.primarySoft, borderRadius: radius.input, padding: 12 },
@@ -725,6 +846,7 @@ const s = StyleSheet.create({
   checkoutBar: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, paddingHorizontal: SCREEN_PADDING, paddingTop: 14, borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card, ...shadow, shadowOffset: { width: 0, height: -4 } },
   summaryLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
   successIcon: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  depositBox: { alignItems: 'center', gap: 10, marginTop: 16, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primarySoft },
   infoBox: { flexDirection: 'row', gap: 10, backgroundColor: colors.primarySoft, borderRadius: radius.input, padding: 14, marginTop: 12 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   orderCard: { backgroundColor: colors.surface, borderRadius: radius.card, padding: 16 },

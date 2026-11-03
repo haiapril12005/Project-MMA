@@ -61,15 +61,15 @@ export default function CartScreen({ navigation }) {
         ListEmptyComponent={<EmptyState icon="sofa-outline" title="Giỏ hàng đang trống" text="Chọn vài món nội thất cho ngôi nhà của bạn nhé." action="Mua sắm ngay" onPress={() => navigation.navigate('Home')} />}
         renderItem={({ item: { product: p, quantity, selectedColor, maxQty } }) => (
           <View style={s.row}>
-            <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
+            <Pressable onPress={() => navigation.navigate('Detail', { id: p.id, color: selectedColor })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
               <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
             </Pressable>
             <View style={{ flex: 1, justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pressable style={{ flex: 1 }} onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${p.name}`}>
+                <Pressable style={{ flex: 1 }} onPress={() => navigation.navigate('Detail', { id: p.id, color: selectedColor })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${p.name}`}>
                   <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14, lineHeight: 20 }}>{p.name}</Txt>
                   <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>
-                  {!!selectedColor && <Txt v="caption" color={colors.inkSoft}>Màu: {selectedColor}</Txt>}
+                  {!!selectedColor && <Txt v="caption" color={colors.inkSoft}>Màu: {selectedColor} · còn {maxQty}</Txt>}
                   {quantity > maxQty && (
                     <Txt v="caption" color={colors.danger}>{maxQty > 0 ? `Chỉ còn đặt được ${maxQty}, hãy giảm số lượng` : 'Đã hết hàng, hãy xóa khỏi giỏ'}</Txt>
                   )}
@@ -89,9 +89,9 @@ export default function CartScreen({ navigation }) {
         <View style={[s.summary, { paddingBottom: 16 }]}>
           <Line label="Tạm tính" value={formatVND(subtotal)} />
           {saved > 0 && <Line label="Giảm giá" value={`-${formatVND(saved)}`} color={colors.success} />}
-          <Line label="Giao hàng và lắp đặt" value="Miễn phí" color={colors.success} />
+          <Line label="Giao hàng và lắp đặt" value="Tính theo khu vực" color={colors.inkSoft} />
           <View style={s.totalRow}>
-            <Txt v="subtitle">Tổng cộng</Txt>
+            <Txt v="subtitle">Tổng tiền hàng</Txt>
             <Txt v="display" color={colors.primary} style={{ fontSize: 22, lineHeight: 30 }}>{formatVND(total)}</Txt>
           </View>
           {overStock && (

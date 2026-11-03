@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useProductReviews } from '../hooks/useProductReviews';
 import { colors, fonts, radius, SCREEN_PADDING, shadow } from '../theme';
-import { confirmAction, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
+import { colorStockOf, confirmAction, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
 import { Button, Chip, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Stars, Txt } from '../components/ui';
 
 export default function DetailScreen({ route, navigation }) {
@@ -20,7 +20,8 @@ export default function DetailScreen({ route, navigation }) {
     canReview, eligibilityLoading, save: saveReview, remove: removeReview,
   } = useProductReviews(route.params.id, user?.id);
   const [starFilter, setStarFilter] = useState(0);
-  const [color, setColor] = useState(product?.color?.[0]);
+  // Mở từ đơn hàng thì chọn sẵn đúng màu đã mua
+  const [color, setColor] = useState(product?.color?.includes(route.params?.color) ? route.params.color : product?.color?.[0]);
   const [qty, setQty] = useState(1);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
@@ -49,11 +50,18 @@ export default function DetailScreen({ route, navigation }) {
   }
 
   const fav = isFav(product.id);
+  // Admin chỉ xem và theo dõi kho, không mua hàng / yêu thích / đánh giá
+  const isAdmin = !!user?.isAdmin;
+  const available = colorStockOf(product, color);
+  const chooseColor = (c) => {
+    setColor(c);
+    setQty((current) => Math.min(current, Math.max(1, colorStockOf(product, c))));
+  };
   const needLogin = () => { if (!user) { navigation.navigate('Login'); return true; } return false; };
   // Mua ngay: sang màn đặt hàng với đúng sản phẩm, màu và số lượng đang chọn; giỏ hàng không bị thay đổi
   const buyNow = () => {
     if (needLogin()) return;
-    const quantity = Math.min(qty, product.stock);
+    const quantity = Math.min(qty, available);
     navigation.navigate('Checkout', { buyNow: { productId: product.id, selectedColor: color || product.color?.[0] || '', quantity } });
   };
   const jumpToReviews = () => scrollRef.current?.scrollTo({ y: Math.max(0, reviewsY.current - insets.top - 64), animated: true });
@@ -89,7 +97,7 @@ export default function DetailScreen({ route, navigation }) {
     { icon: 'texture-box', label: 'Chất liệu', value: product.material },
     { icon: 'ruler', label: 'Kích thước', value: product.dimensions },
     { icon: 'storefront-outline', label: 'Thương hiệu', value: product.brand },
-    { icon: 'package-variant-closed', label: 'Tình trạng', value: product.stock > 0 ? `Còn ${product.stock} sản phẩm` : 'Tạm hết hàng' },
+    { icon: 'package-variant-closed', label: 'Tình trạng', value: product.stock > 0 ? `Còn ${product.stock} sản phẩm (mọi màu)` : 'Tạm hết hàng' },
   ];
 
   return (
@@ -123,7 +131,7 @@ export default function DetailScreen({ route, navigation }) {
               <Txt v="bodyStrong" style={{ marginBottom: 10 }}>Màu sắc<Txt v="body" color={colors.inkSoft}>{`  ${color}`}</Txt></Txt>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 {product.color.map((c) => (
-                  <Pressable key={c} onPress={() => setColor(c)} accessibilityRole="button" accessibilityLabel={c} accessibilityState={{ selected: color === c }} style={[s.swatchRing, color === c && { borderColor: colors.primary }]}>
+                  <Pressable key={c} onPress={() => chooseColor(c)} accessibilityRole="button" accessibilityLabel={c} accessibilityState={{ selected: color === c }} style={[s.swatchRing, color === c && { borderColor: colors.primary }]}>
                     <View style={[s.swatch, { backgroundColor: SWATCHES[c] || colors.sunken }]} />
                   </Pressable>
                 ))}
@@ -134,10 +142,16 @@ export default function DetailScreen({ route, navigation }) {
           {/* Số lượng: dùng chung cho "Thêm vào giỏ" và "Mua ngay" */}
           <View style={s.qtyRow}>
             <View style={{ flex: 1 }}>
-              <Txt v="bodyStrong">Số lượng</Txt>
-              <Txt v="small" color={product.stock > 0 ? colors.inkSoft : colors.danger}>{product.stock > 0 ? `Còn ${product.stock} sản phẩm` : 'Tạm hết hàng'}</Txt>
+              <Txt v="bodyStrong">{isAdmin ? 'Tồn kho' : 'Số lượng'}</Txt>
+              <Txt v="small" color={available > 0 ? colors.inkSoft : colors.danger}>
+                {available > 0
+                  ? `${color ? `Màu ${color}: còn` : 'Còn'} ${available} sản phẩm`
+                  : `${color ? `Màu ${color}` : 'Sản phẩm'} tạm hết hàng`}
+              </Txt>
             </View>
-            <QtyStepper value={qty} max={Math.max(1, product.stock)} onChange={setQty} />
+            {isAdmin
+              ? <Txt v="small" color={colors.inkSoft}>{`Tổng ${product.stock}`}</Txt>
+              : <QtyStepper value={qty} max={Math.max(1, available)} onChange={setQty} />}
           </View>
 
           {/* Thông số dạng lưới 2 cột */}
@@ -155,8 +169,9 @@ export default function DetailScreen({ route, navigation }) {
           <Txt v="body" color={colors.inkSoft}>{product.description}</Txt>
 
           <View style={s.perks}>
-            <View style={s.perk}><Icon name="truck-delivery-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Giao và lắp đặt miễn phí nội thành</Txt></View>
-            <View style={s.perk}><Icon name="shield-check-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Bảo hành 24 tháng, đổi trả trong 7 ngày</Txt></View>
+            <View style={s.perk}><Icon name="truck-delivery-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Giao và lắp đặt miễn phí nội thành, ngoại thành và tỉnh tính phí theo khu vực</Txt></View>
+            <View style={s.perk}><Icon name="shield-check-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>{product.warrantyMonths ? `Bảo hành ${product.warrantyMonths} tháng` : 'Không bảo hành'}, đổi trả trong 7 ngày</Txt></View>
+            <View style={s.perk}><Icon name="cash-lock" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Đơn từ 20 triệu đặt cọc 30% trước khi giao</Txt></View>
           </View>
 
           {/* ---------- Đánh giá ---------- */}
@@ -224,7 +239,8 @@ export default function DetailScreen({ route, navigation }) {
             </>
             )}
 
-            {/* Viết đánh giá */}
+            {/* Viết đánh giá (admin không viết đánh giá) */}
+            {!isAdmin && (
             <View style={s.writeBox}>
               <Txt v="subtitle">{mine ? 'Đánh giá của bạn' : 'Viết đánh giá'}</Txt>
               {user && eligibilityLoading ? (
@@ -260,6 +276,7 @@ export default function DetailScreen({ route, navigation }) {
                 <Button title="Đăng nhập để đánh giá" variant="outline" size="sm" onPress={() => navigation.navigate('Login')} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
               )}
             </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -267,26 +284,39 @@ export default function DetailScreen({ route, navigation }) {
       {/* Nút nổi trên ảnh */}
       <View style={[s.topBar, { top: insets.top + 8 }]} pointerEvents="box-none">
         <IconButton icon="chevron-left" onPress={() => navigation.goBack()} label="Quay lại" bg="rgba(255, 251, 246, 0.94)" iconSize={26} />
-        <IconButton icon={fav ? 'heart' : 'heart-outline'} color={fav ? colors.primary : colors.ink} onPress={() => toggleFavorite(product.id)} label={fav ? 'Bỏ yêu thích' : 'Yêu thích'} bg="rgba(255, 251, 246, 0.94)" />
+        {!isAdmin && <IconButton icon={fav ? 'heart' : 'heart-outline'} color={fav ? colors.primary : colors.ink} onPress={() => toggleFavorite(product.id)} label={fav ? 'Bỏ yêu thích' : 'Yêu thích'} bg="rgba(255, 251, 246, 0.94)" />}
       </View>
 
-      {/* Thanh mua hàng cố định */}
+      {/* Admin: thông tin giá vốn thay cho nút mua */}
+      {isAdmin ? (
+        <View style={[s.buyBar, { paddingBottom: Math.max(insets.bottom, 14), justifyContent: 'space-between' }]}>
+          <View>
+            <Txt v="caption" color={colors.inkMuted}>Giá vốn / sản phẩm</Txt>
+            <Txt v="bodyStrong">{formatVND(product.costPrice)}</Txt>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Txt v="caption" color={colors.inkMuted}>Lãi gộp / sản phẩm</Txt>
+            <Txt v="bodyStrong" color={colors.success}>{formatVND(finalPrice(product) - product.costPrice)}</Txt>
+          </View>
+        </View>
+      ) : (
       <View style={[s.buyBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <Button
           title="Thêm vào giỏ"
           variant="soft"
           style={{ flex: 1 }}
-          disabled={product.stock <= 0}
+          disabled={available <= 0}
           onPress={() => { if (!needLogin()) addToCart(product.id, qty, color); }}
         />
         <Button
-          title={product.stock > 0 ? 'Mua ngay' : 'Hết hàng'}
+          title={available > 0 ? 'Mua ngay' : product.stock > 0 ? 'Hết màu này' : 'Hết hàng'}
           icon="lightning-bolt"
           style={{ flex: 1 }}
-          disabled={product.stock <= 0}
+          disabled={available <= 0}
           onPress={buyNow}
         />
       </View>
+      )}
     </View>
   );
 }

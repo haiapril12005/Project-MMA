@@ -3,9 +3,10 @@ import { FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Tex
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, fonts, radius, SCREEN_PADDING } from '../theme';
-import { applyFilters, brandsOf, CATEGORIES, greeting, SORTS } from '../utils';
+import { applyFilters, brandsOf, CATEGORIES, formatVND, greeting, SORTS } from '../utils';
+import { useCollections } from '../hooks/useCollections';
 import ProductCard from '../components/ProductCard';
-import { Button, Chip, EmptyState, Icon, Skeleton, Txt } from '../components/ui';
+import { Button, Chip, EmptyState, Icon, ProductImage, Skeleton, Txt } from '../components/ui';
 
 const HERO = 'https://images.pexels.com/photos/6908500/pexels-photo-6908500.jpeg?auto=compress&cs=tinysrgb&w=1200';
 
@@ -16,6 +17,7 @@ export default function HomeScreen({ navigation }) {
   const [cat, setCat] = useState('Tất cả');
   const [brand, setBrand] = useState(null);
   const [sort, setSort] = useState('priceDesc');
+  const { collections } = useCollections(products);
 
   const brands = useMemo(() => brandsOf(products), [products]);
   const data = useMemo(() => applyFilters(products, { q, cat, brand, sort }), [products, q, cat, brand, sort]);
@@ -99,6 +101,31 @@ export default function HomeScreen({ navigation }) {
         {brands.map((b) => <Chip key={b} label={b} selected={brand === b} onPress={() => setBrand(brand === b ? null : b)} />)}
       </ScrollView>
 
+      {/* Bộ sưu tập theo thương hiệu */}
+      {showHero && collections.length > 0 && (
+        <View style={{ marginBottom: 6 }}>
+          <Txt v="subtitle" style={{ marginHorizontal: 6, marginBottom: 10 }}>Bộ sưu tập theo thương hiệu</Txt>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 6 }}>
+            {collections.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => navigation.navigate('Collection', { id: item.id })}
+                accessibilityRole="button"
+                accessibilityLabel={`Bộ sưu tập ${item.name} của ${item.brand}`}
+                style={({ pressed }) => [s.collectionCard, pressed && { opacity: 0.85 }]}
+              >
+                <ProductImage uri={item.items[0].uri} category={item.items[0].category} iconSize={36} style={s.collectionImage} />
+                <View style={{ padding: 12, gap: 2 }}>
+                  <Txt v="caption" color={colors.primary}>{`${item.brand} · ${item.room}`}</Txt>
+                  <Txt v="bodyStrong" numberOfLines={1}>{item.name}</Txt>
+                  <Txt v="small" color={colors.inkSoft}>{`${item.items.length} món · trọn bộ ${formatVND(item.total)}`}</Txt>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Số kết quả + sắp xếp */}
       <View style={s.resultRow}>
         <Txt v="subtitle">{cat === 'Tất cả' ? 'Tất cả sản phẩm' : cat}<Txt v="small" color={colors.inkMuted}>{`  ${data.length} món`}</Txt></Txt>
@@ -149,6 +176,8 @@ export default function HomeScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
+  collectionCard: { width: 248, backgroundColor: colors.surface, borderRadius: radius.card, overflow: 'hidden', borderWidth: 1, borderColor: colors.line },
+  collectionImage: { width: '100%', height: 132 },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 6, marginBottom: 18 },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 52, marginHorizontal: 6, paddingHorizontal: 18, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
