@@ -114,7 +114,7 @@ export default function HomeScreen({ navigation }) {
                 accessibilityLabel={`Bộ sưu tập ${item.name} của ${item.brand}`}
                 style={({ pressed }) => [s.collectionCard, pressed && { opacity: 0.85 }]}
               >
-                <ProductImage uri={item.items[0].uri} category={item.items[0].category} iconSize={36} style={s.collectionImage} />
+                <ProductImage width={480} uri={item.items[0].uri} category={item.items[0].category} iconSize={36} style={s.collectionImage} />
                 <View style={{ padding: 12, gap: 2 }}>
                   <Txt v="caption" color={colors.primary}>{`${item.brand} · ${item.room}`}</Txt>
                   <Txt v="bodyStrong" numberOfLines={1}>{item.name}</Txt>
@@ -169,6 +169,8 @@ export default function HomeScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
         refreshControl={<RefreshControl refreshing={loading && products.length > 0} onRefresh={loadProducts} tintColor={colors.primary} colors={[colors.primary]} />}
       />
     </View>

@@ -52,7 +52,7 @@ export default function FavoritesScreen({ navigation }) {
         renderItem={({ item: p }) => (
           <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
-              <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
+              <ProductImage width={200} uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
             </Pressable>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id })} accessibilityRole="button" accessibilityLabel={`Xem chi tiết ${p.name}`} style={({ pressed }) => [{ flex: 1, gap: 2 }, pressed && { opacity: 0.8 }]}>
               <Txt v="caption" color={colors.inkMuted}>{p.brand}</Txt>

@@ -35,6 +35,18 @@ export default function DemoQR({ value, size = 168 }) {
     });
   }, [value]);
 
+  // Gộp các ô liền nhau cùng màu thành một khối để vẽ ít View hơn
+  const rows = useMemo(() => Array.from({ length: SIZE }, (_, row) => {
+    const runs = [];
+    for (let col = 0; col < SIZE; col += 1) {
+      const dark = cells[row * SIZE + col];
+      const last = runs[runs.length - 1];
+      if (last && last.dark === dark) last.length += 1;
+      else runs.push({ dark, length: 1 });
+    }
+    return runs;
+  }), [cells]);
+
   const cell = size / SIZE;
   return (
     <View
@@ -42,11 +54,13 @@ export default function DemoQR({ value, size = 168 }) {
       accessibilityLabel="Mã QR minh họa"
       style={{ width: size + 16, padding: 8, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: colors.line }}
     >
-      <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap' }}>
-        {cells.map((dark, index) => (
-          <View key={index} style={{ width: cell, height: cell, backgroundColor: dark ? '#1F1A17' : '#FFFFFF' }} />
-        ))}
-      </View>
+      {rows.map((runs, row) => (
+        <View key={row} style={{ flexDirection: 'row', height: cell }}>
+          {runs.map((run, index) => (
+            <View key={index} style={{ width: run.length * cell, backgroundColor: run.dark ? '#1F1A17' : '#FFFFFF' }} />
+          ))}
+        </View>
+      ))}
     </View>
   );
 }

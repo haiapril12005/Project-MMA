@@ -77,7 +77,7 @@ export default function CollectionScreen({ route, navigation }) {
                 accessibilityLabel={`Xem chi tiết ${product.name}`}
                 style={({ pressed }) => [s.item, index < collection.items.length - 1 && s.divider, pressed && { opacity: 0.7 }]}
               >
-                <ProductImage uri={product.uri} category={product.category} iconSize={24} style={s.thumb} />
+                <ProductImage width={200} uri={product.uri} category={product.category} iconSize={24} style={s.thumb} />
                 <View style={{ flex: 1 }}>
                   <Txt v="caption" color={colors.inkMuted}>{product.category}</Txt>
                   <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{product.name}</Txt>

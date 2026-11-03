@@ -16,7 +16,7 @@ function ProductCard({ item }) {
     <View style={s.wrap}>
       <View>
         <Pressable onPress={() => nav.navigate('Detail', { id: item.id })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${item.name}`} style={({ pressed }) => pressed && { opacity: 0.88 }}>
-          <ProductImage uri={item.uri} category={item.category} style={s.img} />
+          <ProductImage width={480} uri={item.uri} category={item.category} style={s.img} />
         </Pressable>
         {!isAdmin && <IconButton
           icon={fav ? 'heart' : 'heart-outline'}

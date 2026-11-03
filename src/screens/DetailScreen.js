@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useProductReviews } from '../hooks/useProductReviews';
 import { colors, fonts, radius, SCREEN_PADDING, shadow } from '../theme';
-import { colorStockOf, confirmAction, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
+import { colorStockOf, confirmAction, DEPOSIT_THRESHOLD, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
 import { Button, Chip, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Stars, Txt } from '../components/ui';
 
 export default function DetailScreen({ route, navigation }) {
@@ -171,7 +171,7 @@ export default function DetailScreen({ route, navigation }) {
           <View style={s.perks}>
             <View style={s.perk}><Icon name="truck-delivery-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Giao và lắp đặt miễn phí nội thành, ngoại thành và tỉnh tính phí theo khu vực</Txt></View>
             <View style={s.perk}><Icon name="shield-check-outline" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>{product.warrantyMonths ? `Bảo hành ${product.warrantyMonths} tháng` : 'Không bảo hành'}, đổi trả trong 7 ngày</Txt></View>
-            <View style={s.perk}><Icon name="cash-lock" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>Đơn từ 20 triệu đặt cọc 30% trước khi giao</Txt></View>
+            <View style={s.perk}><Icon name="cash-lock" size={20} color={colors.success} /><Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>{`Đơn từ ${formatVND(DEPOSIT_THRESHOLD)} đặt cọc 30% trước khi giao`}</Txt></View>
           </View>
 
           {/* ---------- Đánh giá ---------- */}

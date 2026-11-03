@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 
-export const adminErrorMessage = (e) => {
+const adminErrorMessage = (e) => {
   const message = String(e?.message || '');
   if (message.includes('ADMIN_ONLY')) return 'Tài khoản này không có quyền quản trị.';
   if (message.includes('DEPOSIT_NOT_PAID')) return 'Đơn chưa nhận cọc. Hãy xác nhận đã nhận cọc trước khi xác nhận đơn.';

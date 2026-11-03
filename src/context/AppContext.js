@@ -6,6 +6,28 @@ const Ctx = createContext(null);
 
 const MIGRATION_MISSING = 'Database chưa cập nhật nghiệp vụ mới. Hãy chạy file supabase/migrations/202611030001_furniture_flows.sql trong Supabase SQL Editor.';
 
+// Mã lỗi database khi đặt hàng -> câu báo cho khách
+const ORDER_ERRORS = [
+  ['DELIVERY_ZONE_INVALID', 'Chọn khu vực giao hàng để tính phí giao và lắp đặt.'],
+  ['COLOR_STOCK_INVALID', 'Màu bạn chọn không còn đủ hàng. Hãy giảm số lượng hoặc chọn màu khác.'],
+  ['CART_QUANTITY_INVALID', 'Số lượng vượt quá hàng còn trong kho. Hãy giảm số lượng rồi thử lại.'],
+  ['CART_EMPTY', 'Giỏ hàng đang trống.'],
+  ['PRODUCT_NOT_FOUND', 'Sản phẩm này đã ngừng bán.'],
+  ['PRODUCT_COLOR_INVALID', 'Màu đã chọn không còn bán, hãy chọn màu khác.'],
+  ['SHIPPING_PHONE_INVALID', 'Số điện thoại cần từ 9 đến 11 chữ số.'],
+  ['SHIPPING_ADDRESS_INVALID', 'Địa chỉ giao hàng cần ít nhất 10 ký tự.'],
+  ['INSTALLATION_DATE_INVALID', 'Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.'],
+  ['INSTALLATION_TIME_SLOT_INVALID', 'Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.'],
+  ['AUTH_REQUIRED', 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'],
+  ['JWT', 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'],
+];
+
+const orderErrorMessage = (e, fallback) => {
+  const message = String(e?.message || '');
+  if (e?.code === 'PGRST202' || message.includes('Could not find the function')) return MIGRATION_MISSING;
+  return ORDER_ERRORS.find(([code]) => message.includes(code))?.[1] || fallback;
+};
+
 export const useApp = () => {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useApp phải được dùng bên trong <AppProvider>');
@@ -392,62 +414,26 @@ export function AppProvider({ children }) {
   // ---------- Đơn hàng ----------
   // installation = { date, timeSlot, note }: lịch giao và lắp đặt, bắt buộc cho mọi đơn
   // buyNowItem = { productId, selectedColor, quantity }: "Mua ngay" chỉ đặt món này, giỏ hàng giữ nguyên
+  // Đặt từ giỏ, hoặc "Mua ngay" khi có buyNowItem (không đụng tới giỏ)
   const placeOrder = async ({ shipping, paymentMethod, installation, deliveryZone, buyNowItem = null }) => {
     const current = userRef.current;
-    if (buyNowItem) {
-      if (!current) throw new Error('Bạn cần đăng nhập để đặt hàng.');
-      try {
-        const order = await api.orders.placeBuyNow({ item: buyNowItem, shipping, paymentMethod, installation, deliveryZone });
-        setOrders((items) => [order, ...items]);
-        refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
-        return order;
-      } catch (e) {
-        // In lỗi gốc ra terminal Metro để dễ tìm nguyên nhân
-        console.warn('[Mua ngay] place_buy_now_order lỗi:', e?.code, e?.message);
-        const message = String(e?.message || '');
-        if (e?.code === 'PGRST202' || message.includes('Could not find the function')) {
-          throw new Error(MIGRATION_MISSING);
-        }
-        if (message.includes('DELIVERY_ZONE_INVALID')) throw new Error('Chọn khu vực giao hàng để tính phí giao và lắp đặt.');
-        if (message.includes('CART_QUANTITY_INVALID')) throw new Error('Số lượng vượt quá hàng còn trong kho. Hãy giảm số lượng rồi thử lại.');
-        if (message.includes('COLOR_STOCK_INVALID')) { refreshProductsSilently(); throw new Error('Màu bạn chọn không còn đủ hàng. Hãy giảm số lượng hoặc chọn màu khác.'); }
-        if (message.includes('PRODUCT_NOT_FOUND')) throw new Error('Sản phẩm này đã ngừng bán.');
-        if (message.includes('PRODUCT_COLOR_INVALID')) throw new Error('Màu đã chọn không còn bán, hãy chọn màu khác.');
-        if (message.includes('SHIPPING_PHONE_INVALID')) throw new Error('Số điện thoại cần từ 9 đến 11 chữ số.');
-        if (message.includes('SHIPPING_ADDRESS_INVALID')) throw new Error('Địa chỉ giao hàng cần ít nhất 10 ký tự.');
-        if (message.includes('INSTALLATION_DATE_INVALID')) throw new Error('Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.');
-        if (message.includes('INSTALLATION_TIME_SLOT_INVALID')) throw new Error('Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.');
-        if (message.includes('AUTH_REQUIRED') || message.includes('JWT')) throw new Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.');
-        throw new Error(`Không gửi được đơn hàng (${e?.code || 'lỗi kết nối'}). Vui lòng thử lại.`);
-      }
-    }
-    if (!current || !current.cart.length) throw new Error('Giỏ hàng đang trống.');
+    if (!current) throw new Error('Bạn cần đăng nhập để đặt hàng.');
+    if (!buyNowItem && !current.cart.length) throw new Error('Giỏ hàng đang trống.');
+    const details = { shipping, paymentMethod, installation, deliveryZone };
     try {
-      const order = await api.orders.place({ shipping, paymentMethod, installation, deliveryZone });
+      const order = buyNowItem
+        ? await api.orders.placeBuyNow({ item: buyNowItem, ...details })
+        : await api.orders.place(details);
       setOrders((items) => [order, ...items]);
-      setUser({ ...current, cart: [] });
+      if (!buyNowItem) setUser({ ...current, cart: [] });
       refreshProductsSilently(); // database đã trừ kho, cập nhật lại "Còn N sản phẩm"
       return order;
     } catch (e) {
-      console.warn('[Đặt hàng] place_order lỗi:', e?.code, e?.message);
-      const message = String(e?.message || '');
-      if (e?.code === 'PGRST202' || message.includes('Could not find the function')) throw new Error(MIGRATION_MISSING);
-      if (message.includes('DELIVERY_ZONE_INVALID')) throw new Error('Chọn khu vực giao hàng để tính phí giao và lắp đặt.');
-      if (message.includes('COLOR_STOCK_INVALID')) {
-        refreshProductsSilently();
-        throw new Error('Có màu trong giỏ không còn đủ hàng. Hãy giảm số lượng hoặc chọn màu khác.');
-      }
-      if (message.includes('CART_QUANTITY_INVALID')) {
-        refreshProductsSilently();
-        throw new Error('Có sản phẩm trong giỏ vượt quá số lượng còn trong kho (tính chung mọi màu). Hãy giảm số lượng rồi thử lại.');
-      }
-      if (message.includes('INSTALLATION_DATE_INVALID')) {
-        throw new Error('Ngày lắp đặt phải bắt đầu từ ngày kế tiếp.');
-      }
-      if (message.includes('INSTALLATION_TIME_SLOT_INVALID')) {
-        throw new Error('Khung giờ lắp đặt không hợp lệ. Vui lòng chọn lại.');
-      }
-      throw new Error('Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.');
+      if (__DEV__) console.warn('[Đặt hàng] lỗi:', e?.code, e?.message);
+      if (/STOCK|QUANTITY/.test(String(e?.message))) refreshProductsSilently();
+      throw new Error(orderErrorMessage(e, buyNowItem
+        ? 'Không gửi được đơn hàng. Vui lòng thử lại.'
+        : 'Không gửi được đơn hàng. Giỏ hàng vẫn được giữ lại để bạn thử lại.'));
     }
   };
 

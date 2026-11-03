@@ -62,7 +62,7 @@ export default function CartScreen({ navigation }) {
         renderItem={({ item: { product: p, quantity, selectedColor, maxQty } }) => (
           <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id, color: selectedColor })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
-              <ProductImage uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
+              <ProductImage width={200} uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
             </Pressable>
             <View style={{ flex: 1, justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>

@@ -8,6 +8,7 @@ import {
   CANCELLATION_STATUS,
   DELIVERY_ZONES,
   DEPOSIT_STATUS,
+  DEPOSIT_THRESHOLD,
   DEPOSIT_STATUSES,
   deliveryZone as findDeliveryZone,
   depositFor,
@@ -454,7 +455,7 @@ export function CheckoutScreen({ route, navigation }) {
           <View style={s.infoBox}>
             <Icon name="cash-lock" color={colors.primary} />
             <Txt v="small" color={colors.inkSoft} style={{ flex: 1 }}>
-              Đơn từ {formatVND(20000000)} cần đặt cọc 30% ({formatVND(deposit)}) bằng chuyển khoản. Cửa hàng chỉ xác nhận đơn sau khi nhận cọc; phần còn lại thanh toán theo phương thức bạn chọn.
+              Đơn từ {formatVND(DEPOSIT_THRESHOLD)} cần đặt cọc 30% ({formatVND(deposit)}) bằng chuyển khoản. Cửa hàng chỉ xác nhận đơn sau khi nhận cọc; phần còn lại thanh toán theo phương thức bạn chọn.
             </Txt>
           </View>
         )}
@@ -463,7 +464,7 @@ export function CheckoutScreen({ route, navigation }) {
         <View style={s.card}>
           {items.map(({ product: p, quantity, selectedColor }, index) => (
             <View key={`${p.id}:${selectedColor}`} style={[s.checkoutItem, index < items.length - 1 && s.divider]}>
-              <ProductImage uri={p.uri} category={p.category} iconSize={25} style={s.checkoutImage} />
+              <ProductImage width={200} uri={p.uri} category={p.category} iconSize={25} style={s.checkoutImage} />
               <View style={{ flex: 1 }}>
                 <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{p.name}</Txt>
                 <Txt v="caption" color={colors.inkSoft}>{selectedColor || 'Mặc định'} · SL {quantity}</Txt>
@@ -595,7 +596,7 @@ export function OrderHistoryScreen({ navigation }) {
                 </View>
               </View>
               <View style={s.orderPreview}>
-                <ProductImage uri={item.items[0]?.uri} category={item.items[0]?.category} iconSize={24} style={s.orderImage} />
+                <ProductImage width={200} uri={item.items[0]?.uri} category={item.items[0]?.category} iconSize={24} style={s.orderImage} />
                 <View style={{ flex: 1 }}>
                   <Txt v="small" numberOfLines={2}>{item.items[0]?.name}</Txt>
                   <Txt v="caption" color={colors.inkMuted}>{item.items.length > 1 ? `và ${item.items.length - 1} sản phẩm khác` : `${item.items[0]?.selectedColor || 'Mặc định'} · SL ${item.items[0]?.quantity}`}</Txt>
@@ -766,7 +767,7 @@ export function OrderDetailScreen({ route, navigation }) {
               accessibilityLabel={`Xem chi tiết ${item.name}`}
               style={({ pressed }) => [s.checkoutItem, index < order.items.length - 1 && s.divider, pressed && { opacity: 0.7 }]}
             >
-              <ProductImage uri={item.uri} category={item.category} iconSize={25} style={s.checkoutImage} />
+              <ProductImage width={200} uri={item.uri} category={item.category} iconSize={25} style={s.checkoutImage} />
               <View style={{ flex: 1 }}>
                 <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{item.name}</Txt>
                 <Txt v="caption" color={colors.inkSoft}>{item.selectedColor || 'Mặc định'} · SL {item.quantity}</Txt>

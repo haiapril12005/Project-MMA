@@ -7,7 +7,7 @@ import { useAdminOrder, useAdminOrders } from '../hooks/useAdminOrders';
 import { colors, radius, SCREEN_PADDING } from '../theme';
 import {
   confirmAction, DEPOSIT_STATUS, DEPOSIT_STATUSES, deliveryZone, formatDateOnly, formatDateTime, formatVND,
-  ORDER_STATUS, ORDER_STATUSES, orderStatus, paymentLabel,
+  DEPOSIT_THRESHOLD, ORDER_STATUS, ORDER_STATUSES, orderStatus, paymentLabel,
 } from '../utils';
 import { Button, Chip, EmptyState, Field, Icon, IconButton, Skeleton, Txt } from '../components/ui';
 
@@ -252,7 +252,7 @@ export function AdminOrderScreen({ route, navigation }) {
             />
           ))}
           {awaitingDeposit && order.status === ORDER_STATUS.PENDING_CONFIRMATION && (
-            <Txt v="caption" color={colors.inkMuted}>Đơn từ 20 triệu cần cọc 30%. Kiểm tra tài khoản nhận được tiền (nội dung "COC {order.code.replace(/-/g, '')}") rồi bấm "Đã nhận cọc" để duyệt đơn.</Txt>
+            <Txt v="caption" color={colors.inkMuted}>{`Đơn từ ${formatVND(DEPOSIT_THRESHOLD)} cần cọc 30%.`} Kiểm tra tài khoản nhận được tiền (nội dung "COC {order.code.replace(/-/g, '')}") rồi bấm "Đã nhận cọc" để duyệt đơn.</Txt>
           )}
           {STORE_CAN_CANCEL.includes(order.status) && (
             <Button title="Cửa hàng hủy đơn" icon="close-circle-outline" variant="danger" loading={busy === ORDER_STATUS.CANCELLED} onPress={askStoreCancel} />

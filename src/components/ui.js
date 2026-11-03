@@ -132,13 +132,16 @@ export function Stars({ value = 0, size = 16, onChange, gap = 2 }) {
 }
 
 // ---------- Ảnh sản phẩm, có ảnh dự phòng khi lỗi mạng ----------
-export function ProductImage({ uri, category, style, iconSize = 40 }) {
+// Ảnh Pexels có tham số w=: xin đúng bề rộng cần dùng để tải nhanh và tốn ít bộ nhớ hơn
+const sizedUri = (uri, width) => (width && /images\.pexels\.com/.test(uri || '') ? uri.replace(/([?&])w=\d+/, `$1w=${width}`) : uri);
+
+export function ProductImage({ uri, category, style, iconSize = 40, width }) {
   const [failed, setFailed] = useState(!uri);
   const icon = CATEGORIES.find((c) => c.key === category)?.icon || 'image-outline';
   return (
     <View style={[{ backgroundColor: colors.sunken, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, style]}>
       <Icon name={icon} size={iconSize} color="#C9B6A4" style={{ position: 'absolute' }} />
-      {!failed && <Image source={{ uri }} onError={() => setFailed(true)} resizeMode="cover" style={StyleSheet.absoluteFill} />}
+      {!failed && <Image source={{ uri: sizedUri(uri, width) }} onError={() => setFailed(true)} resizeMode="cover" style={StyleSheet.absoluteFill} />}
     </View>
   );
 }
