@@ -10,3 +10,4 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 .DS_Store
+Claude outputs/
