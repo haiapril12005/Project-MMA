@@ -3,7 +3,9 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { colors, radius, SCREEN_PADDING, shadow } from '../theme';
-import { confirmAction, finalPrice, formatVND } from '../utils';
+import { confirmAction, formatVND, priceLines } from '../utils';
+import { useGiftRules } from '../hooks/useGiftRules';
+import GiftNotice from '../components/GiftNotice';
 import { Button, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Txt } from '../components/ui';
 
 export default function CartScreen({ navigation }) {
@@ -17,9 +19,9 @@ export default function CartScreen({ navigation }) {
   }).filter((i) => i.product);
   // Có dòng vượt tồn kho (do kho vừa giảm) thì chưa cho sang bước đặt hàng
   const overStock = items.some((i) => i.quantity > i.maxQty);
-  const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
-  const total = items.reduce((sum, i) => sum + finalPrice(i.product) * i.quantity, 0);
-  const saved = subtotal - total;
+  // Giá từng dòng đã tính giá sỉ (mua từ N cái cùng sản phẩm)
+  const { lines, subtotal, itemsTotal: total, discount: saved } = priceLines(items);
+  const giftRules = useGiftRules(products);
 
   const header = (
     <View style={[s.head, { paddingTop: insets.top + 16 }]}>
@@ -52,14 +54,14 @@ export default function CartScreen({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
-        data={items}
         keyExtractor={(i) => `${i.productId}:${i.selectedColor}`}
         ListHeaderComponent={header}
         contentContainerStyle={{ paddingBottom: items.length ? 230 : 32, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={<EmptyState icon="sofa-outline" title="Giỏ hàng đang trống" text="Chọn vài món nội thất cho ngôi nhà của bạn nhé." action="Mua sắm ngay" onPress={() => navigation.navigate('Home')} />}
-        renderItem={({ item: { product: p, quantity, selectedColor, maxQty } }) => (
+        data={lines}
+        renderItem={({ item: { product: p, quantity, selectedColor, maxQty, wholesale, lineTotal } }) => (
           <View style={s.row}>
             <Pressable onPress={() => navigation.navigate('Detail', { id: p.id, color: selectedColor })} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${p.name}`}>
               <ProductImage width={200} uri={p.uri} category={p.category} iconSize={28} style={s.thumb} />
@@ -77,7 +79,14 @@ export default function CartScreen({ navigation }) {
                 <IconButton icon="trash-can-outline" color={colors.inkSoft} bg="transparent" size={32} iconSize={20} onPress={() => removeFromCart(p.id, selectedColor)} label="Xóa khỏi giỏ" />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(finalPrice(p) * quantity)}</Txt>
+                <View>
+                  <Txt v="price" color={colors.primary} style={{ fontSize: 15 }}>{formatVND(lineTotal)}</Txt>
+                  {p.wholesalePercent > 0 && (
+                    <Txt v="caption" color={wholesale ? colors.success : colors.inkMuted}>
+                      {wholesale ? 'Đã áp dụng giá sỉ' : `Từ ${p.wholesaleMinQty} cái giảm thêm ${Math.round(p.wholesalePercent * 100)}%`}
+                    </Txt>
+                  )}
+                </View>
                 <QtyStepper value={quantity} max={maxQty} onChange={(v) => setQty(p.id, selectedColor, v)} />
               </View>
             </View>
@@ -87,6 +96,7 @@ export default function CartScreen({ navigation }) {
 
       {items.length > 0 && (
         <View style={[s.summary, { paddingBottom: 16 }]}>
+          <GiftNotice rules={giftRules} itemsTotal={total} style={{ marginBottom: 10 }} />
           <Line label="Tạm tính" value={formatVND(subtotal)} />
           {saved > 0 && <Line label="Giảm giá" value={`-${formatVND(saved)}`} color={colors.success} />}
           <Line label="Giao hàng và lắp đặt" value="Tính theo khu vực" color={colors.inkSoft} />

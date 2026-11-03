@@ -3,7 +3,8 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } fro
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
-import { useAdminOrder, useAdminOrders } from '../hooks/useAdminOrders';
+import { useAdminOrders, useManagedOrder, useStaffList } from '../hooks/useAdminOrders';
+import DeliveryPanel from '../components/DeliveryPanel';
 import { colors, radius, SCREEN_PADDING } from '../theme';
 import {
   confirmAction, DEPOSIT_STATUS, DEPOSIT_STATUSES, deliveryZone, formatDateOnly, formatDateTime, formatVND,
@@ -19,16 +20,10 @@ const FILTERS = [
   ...Object.keys(ORDER_STATUSES).map((key) => ({ key, label: ORDER_STATUSES[key].label })),
 ];
 
-// Bước tiếp theo cửa hàng được bấm ở từng trạng thái (database kiểm tra lại cùng luồng này)
+// Bước admin bấm trước khi xuất kho; từ "Xuất kho" trở đi nằm trong DeliveryPanel (admin và nhân viên dùng chung)
 const NEXT_STEPS = {
   pending_confirmation: [{ status: ORDER_STATUS.CONFIRMED, label: 'Xác nhận đơn', icon: 'check-circle-outline' }],
   confirmed: [{ status: ORDER_STATUS.PREPARING, label: 'Bắt đầu chuẩn bị hàng', icon: 'package-variant-closed' }],
-  preparing: [{ status: ORDER_STATUS.SHIPPING, label: 'Xuất kho, bắt đầu giao', icon: 'truck-delivery-outline' }],
-  shipping: [
-    { status: ORDER_STATUS.INSTALLING, label: 'Đã đến nơi, đang lắp đặt', icon: 'tools' },
-    { status: ORDER_STATUS.DELIVERED, label: 'Đã giao (không cần lắp)', icon: 'check-circle', variant: 'outline' },
-  ],
-  installing: [{ status: ORDER_STATUS.DELIVERED, label: 'Hoàn tất lắp đặt', icon: 'check-circle' }],
 };
 const STORE_CAN_CANCEL = [ORDER_STATUS.PENDING_CONFIRMATION, ORDER_STATUS.CONFIRMED, ORDER_STATUS.PREPARING];
 
@@ -124,7 +119,7 @@ export function AdminOrdersScreen({ route, navigation }) {
               <StatusPill status={order.status} />
             </View>
             <Txt v="small" color={colors.inkSoft}>{`${order.shipping.name} · ${order.shipping.phone}`}</Txt>
-            <Txt v="caption" color={colors.inkMuted}>{`Đặt ${formatDateTime(order.createdAt)}${order.installation ? ` · giao ${formatDateOnly(order.installation.date)}` : ''}`}</Txt>
+            <Txt v="caption" color={colors.inkMuted}>{`Đặt ${formatDateTime(order.createdAt)}${order.installation ? ` · giao ${formatDateOnly(order.installation.date)}` : ''}${order.assignedStaff ? ` · NV ${order.assignedStaff.name}` : ''}`}</Txt>
             <View style={s.rowBetween}>
               <Txt v="caption" color={colors.inkSoft}>{`${order.items.reduce((sum, item) => sum + item.quantity, 0)} món · ${deliveryZone(order.deliveryZone)?.label || 'Chưa có khu vực'}`}</Txt>
               <Txt v="bodyStrong" color={colors.primary}>{formatVND(order.total)}</Txt>
@@ -154,7 +149,9 @@ function Badge({ icon, text, danger }) {
 export function AdminOrderScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { user, notify } = useApp();
-  const { order, loading, error, reload, busy, updateStatus, markDepositPaid, reviewCancellation } = useAdminOrder(route.params?.id);
+  const ops = useManagedOrder(route.params?.id);
+  const { order, loading, error, reload, busy, updateStatus, markDepositPaid, reviewCancellation } = ops;
+  const staffList = useStaffList(!!user?.isAdmin);
   const [note, setNote] = useState('');
   const [actionError, setActionError] = useState('');
 
@@ -258,10 +255,19 @@ export function AdminOrderScreen({ route, navigation }) {
             <Button title="Cửa hàng hủy đơn" icon="close-circle-outline" variant="danger" loading={busy === ORDER_STATUS.CANCELLED} onPress={askStoreCancel} />
           )}
           {!steps.length && !STORE_CAN_CANCEL.includes(order.status) && !awaitingDeposit && !pendingCancel && (
-            <Txt v="small" color={colors.inkSoft}>Đơn đã kết thúc, không còn thao tác.</Txt>
+            <Txt v="small" color={colors.inkSoft}>
+              {[ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED].includes(order.status) ? 'Đơn đã kết thúc, không còn thao tác.' : 'Các bước giao hàng nằm ở mục "Giao hàng" bên dưới.'}
+            </Txt>
           )}
           {!!actionError && <Txt v="small" color={colors.danger}>{actionError}</Txt>}
         </View>
+
+        {![ORDER_STATUS.PENDING_CONFIRMATION, ORDER_STATUS.CONFIRMED, ORDER_STATUS.CANCELLED].includes(order.status) && (
+          <>
+            <Txt v="subtitle" style={s.sectionTitle}>Giao hàng</Txt>
+            <DeliveryPanel order={order} ops={ops} isAdmin staffList={staffList} />
+          </>
+        )}
 
         <Txt v="subtitle" style={s.sectionTitle}>Khách hàng và lịch giao</Txt>
         <View style={s.card}>
@@ -278,9 +284,9 @@ export function AdminOrderScreen({ route, navigation }) {
             <View key={`${item.productId}:${item.selectedColor}`} style={s.rowBetween}>
               <View style={{ flex: 1 }}>
                 <Txt v="small" numberOfLines={2}>{item.name}</Txt>
-                <Txt v="caption" color={colors.inkSoft}>{`${item.selectedColor || 'Mặc định'} · SL ${item.quantity}`}</Txt>
+                <Txt v="caption" color={colors.inkSoft}>{`${item.selectedColor || 'Mặc định'} · SL ${item.quantity}${item.isGift ? ' · Quà tặng' : ''}`}</Txt>
               </View>
-              <Txt v="small">{formatVND(item.unitPrice * item.quantity)}</Txt>
+              <Txt v="small" color={item.isGift ? colors.success : colors.ink}>{item.isGift ? 'Tặng' : formatVND(item.unitPrice * item.quantity)}</Txt>
             </View>
           ))}
         </View>

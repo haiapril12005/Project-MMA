@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useProductReviews } from '../hooks/useProductReviews';
 import { colors, fonts, radius, SCREEN_PADDING, shadow } from '../theme';
-import { colorStockOf, confirmAction, DEPOSIT_THRESHOLD, finalPrice, formatVND, percentLabel, SWATCHES } from '../utils';
+import { colorStockOf, confirmAction, DEPOSIT_THRESHOLD, finalPrice, formatVND, percentLabel, SWATCHES, wholesaleApplies, wholesalePrice } from '../utils';
 import { Button, Chip, EmptyState, Icon, IconButton, ProductImage, QtyStepper, Stars, Txt } from '../components/ui';
 
 export default function DetailScreen({ route, navigation }) {
@@ -124,6 +124,14 @@ export default function DetailScreen({ route, navigation }) {
               </>
             )}
           </View>
+          {product.wholesalePercent > 0 && (
+            <View style={s.wholesale}>
+              <Icon name="tag-multiple-outline" size={18} color={colors.success} />
+              <Txt v="small" color={colors.ink} style={{ flex: 1 }}>
+                {`Giá sỉ ${formatVND(wholesalePrice(product))}/cái khi mua từ ${product.wholesaleMinQty} cái (cộng mọi màu)`}
+              </Txt>
+            </View>
+          )}
 
           {/* Màu sắc */}
           {product.color?.length > 0 && (
@@ -148,6 +156,9 @@ export default function DetailScreen({ route, navigation }) {
                   ? `${color ? `Màu ${color}: còn` : 'Còn'} ${available} sản phẩm`
                   : `${color ? `Màu ${color}` : 'Sản phẩm'} tạm hết hàng`}
               </Txt>
+              {!isAdmin && wholesaleApplies(product, qty) && (
+                <Txt v="small" color={colors.success}>{`Giá sỉ: ${formatVND(wholesalePrice(product) * qty)} cho ${qty} cái`}</Txt>
+              )}
             </View>
             {isAdmin
               ? <Txt v="small" color={colors.inkSoft}>{`Tổng ${product.stock}`}</Txt>
@@ -328,6 +339,7 @@ const s = StyleSheet.create({
   offPill: { backgroundColor: colors.primarySoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
   swatchRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(74, 58, 48, 0.12)' },
+  wholesale: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, borderRadius: radius.input, backgroundColor: '#E2EEE7' },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 22, padding: 14, backgroundColor: colors.surface, borderRadius: radius.card },
   specGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 22, marginHorizontal: -5 },
   spec: { width: '50%', padding: 5 },

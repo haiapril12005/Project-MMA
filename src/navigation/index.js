@@ -16,16 +16,31 @@ import { CheckoutScreen, OrderSuccessScreen, OrderHistoryScreen, OrderDetailScre
 import CollectionScreen from '../screens/CollectionScreen';
 import AdminScreen from '../screens/AdminScreen';
 import { AdminOrderScreen, AdminOrdersScreen } from '../screens/AdminOrdersScreen';
+import { StaffOrderScreen, StaffTasksScreen } from '../screens/StaffScreens';
+import { SupportCreateScreen, SupportDetailScreen, SupportListScreen } from '../screens/SupportScreens';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Admin: Tổng quan (thống kê), Đơn hàng (quản lý), Sản phẩm, Tài khoản
+const tabOptions = { headerShown: false, sceneStyle: { backgroundColor: colors.bg } };
+
+// Nhân viên giao hàng: Việc của tôi (đơn được giao + lịch kiểm tra lỗi), Tài khoản
+function StaffTabs() {
+  return (
+    <Tab.Navigator screenOptions={tabOptions} tabBar={(props) => <TabBar {...props} />}>
+      <Tab.Screen name="StaffHome" component={StaffTasksScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+// Admin: Tổng quan (thống kê), Đơn hàng (quản lý), Bảo hành, Sản phẩm, Tài khoản
 function AdminTabs() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }} tabBar={(props) => <TabBar {...props} />}>
+    <Tab.Navigator screenOptions={tabOptions} tabBar={(props) => <TabBar {...props} />}>
       <Tab.Screen name="AdminHome" component={AdminScreen} initialParams={{ tab: true }} />
       <Tab.Screen name="AdminOrdersTab" component={AdminOrdersScreen} initialParams={{ tab: true }} />
+      <Tab.Screen name="AdminSupportTab" component={SupportListScreen} initialParams={{ tab: true }} />
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -36,8 +51,9 @@ function AdminTabs() {
 function Tabs() {
   const { user } = useApp();
   if (user?.isAdmin) return <AdminTabs />;
+  if (user?.isStaff) return <StaffTabs />;
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }} tabBar={(props) => <TabBar {...props} />}>
+    <Tab.Navigator screenOptions={tabOptions} tabBar={(props) => <TabBar {...props} />}>
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Favorites" component={FavoritesScreen} />
       <Tab.Screen name="Cart" component={CartScreen} />
@@ -74,6 +90,10 @@ export default function RootNavigator() {
       <Stack.Screen name="AdminStats" component={AdminScreen} />
       <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} />
       <Stack.Screen name="AdminOrder" component={AdminOrderScreen} />
+      <Stack.Screen name="StaffOrder" component={StaffOrderScreen} />
+      <Stack.Screen name="SupportList" component={SupportListScreen} />
+      <Stack.Screen name="SupportCreate" component={SupportCreateScreen} />
+      <Stack.Screen name="SupportDetail" component={SupportDetailScreen} />
     </Stack.Navigator>
   );
 }

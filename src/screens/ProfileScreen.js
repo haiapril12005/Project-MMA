@@ -7,12 +7,18 @@ import { colors, radius, SCREEN_PADDING } from '../theme';
 import { confirmAction } from '../utils';
 import { Button, Icon, Txt } from '../components/ui';
 
+const ROLE_BADGES = {
+  admin: { label: 'Quản trị viên', icon: 'shield-account', bg: colors.primary, fg: colors.onPrimary },
+  staff: { label: 'Nhân viên giao hàng', icon: 'truck-delivery', bg: '#E1EDF3', fg: '#47708A' },
+  customer: { label: 'Khách hàng', icon: 'account', bg: colors.primarySoft, fg: colors.primary },
+};
+
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { user, logout, cartCount, favorites, orders, refreshAdmin } = useApp();
+  const { user, logout, cartCount, favorites, orders, refreshRole } = useApp();
 
   // Quyền admin vừa được cấp trên Supabase sẽ hiện ra khi mở lại tab Tài khoản
-  useFocusEffect(useCallback(() => { refreshAdmin(); }, [refreshAdmin]));
+  useFocusEffect(useCallback(() => { refreshRole(); }, [refreshRole]));
 
   if (!user) {
     return (
@@ -28,6 +34,8 @@ export default function ProfileScreen({ navigation }) {
     );
   }
 
+  const isStore = user.isAdmin || user.isStaff;
+  const role = ROLE_BADGES[user.isAdmin ? 'admin' : user.isStaff ? 'staff' : 'customer'];
   const askLogout = () => confirmAction({ title: 'Đăng xuất', message: 'Bạn muốn đăng xuất khỏi tài khoản này?', confirmText: 'Đăng xuất', onConfirm: logout });
 
   return (
@@ -39,14 +47,14 @@ export default function ProfileScreen({ navigation }) {
         <View style={{ flex: 1 }}>
           <Txt v="subtitle" numberOfLines={1}>{user.name}</Txt>
           <Txt v="small" color={colors.inkSoft} numberOfLines={1}>{user.email}</Txt>
-          <View style={[s.role, user.isAdmin && { backgroundColor: colors.primary }]}>
-            <Icon name={user.isAdmin ? 'shield-account' : 'account'} size={13} color={user.isAdmin ? colors.onPrimary : colors.primary} />
-            <Txt v="caption" color={user.isAdmin ? colors.onPrimary : colors.primary}>{user.isAdmin ? 'Quản trị viên' : 'Khách hàng'}</Txt>
+          <View style={[s.role, { backgroundColor: role.bg }]}>
+            <Icon name={role.icon} size={13} color={role.fg} />
+            <Txt v="caption" color={role.fg}>{role.label}</Txt>
           </View>
         </View>
       </View>
 
-      {!user.isAdmin && (
+      {!isStore && (
       <View style={s.stats}>
         <Pressable style={s.stat} onPress={() => navigation.navigate('Favorites')} accessibilityRole="button" accessibilityLabel={`${favorites.length} sản phẩm yêu thích`}>
           <Txt v="title" color={colors.primary}>{favorites.length}</Txt>
@@ -64,12 +72,22 @@ export default function ProfileScreen({ navigation }) {
           <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Quản trị cửa hàng</Txt>
           <View style={s.group}>
             <Cell icon="chart-box-outline" title="Thống kê thu chi" value="Thu, chi, lợi nhuận, lịch giao" onPress={() => navigation.navigate('AdminStats')} />
-            <Cell icon="clipboard-list-outline" title="Quản lý đơn hàng" value="Đổi trạng thái, nhận cọc, duyệt hủy" onPress={() => navigation.navigate('AdminOrders')} last />
+            <Cell icon="clipboard-list-outline" title="Quản lý đơn hàng" value="Duyệt, phân công giao, giao bù" onPress={() => navigation.navigate('AdminOrders')} />
+            <Cell icon="shield-wrench-outline" title="Báo lỗi & bảo hành" value="Hẹn lịch kiểm tra, chốt kết luận" onPress={() => navigation.navigate('SupportList')} last />
           </View>
         </>
       )}
 
-      {!user.isAdmin && (
+      {user.isStaff && (
+        <>
+          <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Thông tin liên hệ (khách sẽ thấy)</Txt>
+          <View style={s.group}>
+            <Cell icon="phone-outline" title="Số điện thoại" value={user.phone || 'Chưa cập nhật – vào Sửa thông tin để thêm'} last />
+          </View>
+        </>
+      )}
+
+      {!isStore && (
         <>
           <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Thông tin giao hàng</Txt>
           <View style={s.group}>
@@ -81,7 +99,8 @@ export default function ProfileScreen({ navigation }) {
 
       <Txt v="caption" color={colors.inkMuted} style={s.groupLabel}>Cài đặt</Txt>
       <View style={s.group}>
-        {!user.isAdmin && <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" value={`${orders.length} đơn hàng`} onPress={() => navigation.navigate('OrderHistory')} />}
+        {!isStore && <Cell icon="receipt-text-outline" title="Đơn hàng của tôi" value={`${orders.length} đơn hàng`} onPress={() => navigation.navigate('OrderHistory')} />}
+        {!isStore && <Cell icon="shield-wrench-outline" title="Báo lỗi & bảo hành" value="Theo dõi yêu cầu đã gửi" onPress={() => navigation.navigate('SupportList')} />}
         <Cell icon="account-edit-outline" title="Sửa thông tin" onPress={() => navigation.navigate('EditProfile')} />
         <Cell icon="lock-outline" title="Đổi mật khẩu" onPress={() => navigation.navigate('ChangePassword')} last />
       </View>

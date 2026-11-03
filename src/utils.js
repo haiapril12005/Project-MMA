@@ -21,6 +21,7 @@ export const ORDER_STATUS = {
   PREPARING: 'preparing',
   SHIPPING: 'shipping',
   INSTALLING: 'installing',
+  DELIVERY_ISSUE: 'delivery_issue',
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled',
 };
@@ -87,10 +88,52 @@ export const ORDER_STATUSES = {
   preparing: { label: 'Đang chuẩn bị', color: '#79652F', bg: '#F2ECD8', icon: 'package-variant-closed' },
   shipping: { label: 'Đang giao', color: '#356B58', bg: '#DDEDE6', icon: 'truck-delivery-outline' },
   installing: { label: 'Đang lắp đặt', color: '#5B5A8E', bg: '#E6E5F2', icon: 'tools' },
+  delivery_issue: { label: 'Chờ giao bù', color: '#B4542E', bg: '#F8E2D6', icon: 'truck-alert-outline' },
   delivered: { label: 'Đã giao & lắp đặt', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
   cancelled: { label: 'Đã hủy', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
 };
 
+
+// ---------- Sự cố giao hàng, báo lỗi / bảo hành (migration 202611030008) ----------
+export const INCIDENT_KINDS = {
+  missing: { label: 'Giao thiếu', icon: 'package-variant-remove' },
+  damaged: { label: 'Hàng hỏng', icon: 'package-variant-closed-remove' },
+};
+
+export const SUPPORT_STATUSES = {
+  pending: { label: 'Chờ tiếp nhận', color: '#9A5B2E', bg: '#F6E7D8', icon: 'clock-outline' },
+  scheduled: { label: 'Đã hẹn lịch', color: '#47708A', bg: '#E1EDF3', icon: 'calendar-check' },
+  in_progress: { label: 'Đang xử lý', color: '#5B5A8E', bg: '#E6E5F2', icon: 'tools' },
+  completed: { label: 'Hoàn tất', color: '#2F7250', bg: '#DCEEE3', icon: 'check-circle' },
+  rejected: { label: 'Từ chối', color: '#A34E43', bg: '#F4E1DE', icon: 'close-circle-outline' },
+  cancelled: { label: 'Đã hủy', color: '#6B6B6B', bg: '#ECECEC', icon: 'cancel' },
+};
+export const supportStatus = (key) => SUPPORT_STATUSES[key] || SUPPORT_STATUSES.pending;
+export const OPEN_SUPPORT_STATUSES = ['pending', 'scheduled', 'in_progress'];
+
+export const ASSESSMENTS = {
+  store_fault: 'Lỗi do cửa hàng (vận chuyển, kho, lỗi sẵn)',
+  customer_fault: 'Lỗi do khách sử dụng',
+};
+export const CONCLUSIONS = {
+  store_return: 'Đổi trả miễn phí (lỗi cửa hàng)',
+  warranty: 'Bảo hành',
+  rejected: 'Từ chối',
+};
+export const RESOLUTIONS = { repair: 'Sửa chữa', replace: 'Đổi mới' };
+
+// Số tiền nhân viên cần thu khi giao = tổng đơn - tiền cọc đã nhận
+export const amountDue = (order) => order.total - (order.depositStatus === 'paid' ? order.depositAmount : 0);
+
+// Ngày giao xong (mốc tính bảo hành) và món còn được báo lỗi / bảo hành không
+export const deliveredAtOf = (order) => [...(order.statusHistory || [])].reverse().find((event) => event.status === ORDER_STATUS.DELIVERED)?.at || null;
+export const warrantyActive = (order, item) => {
+  const deliveredAt = deliveredAtOf(order);
+  if (order.status !== ORDER_STATUS.DELIVERED || !deliveredAt || !item.warrantyMonths) return false;
+  const end = new Date(deliveredAt);
+  end.setMonth(end.getMonth() + item.warrantyMonths);
+  return Date.now() <= end.getTime();
+};
 
 export const paymentLabel = (key) => PAYMENT_METHODS.find((p) => p.key === key)?.label || 'Chưa xác định';
 export const orderStatus = (key) => ORDER_STATUSES[key] || ORDER_STATUSES.pending_confirmation;
@@ -147,6 +190,33 @@ export const SWATCHES = {
 };
 
 export const formatVND = (n) => `${String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+// ---------- Giá sỉ và quà tặng: phải khớp apply_furniture_terms (migration 202611030007) ----------
+// Mua từ wholesaleMinQty cái của cùng một sản phẩm (cộng mọi màu) thì mỗi cái giảm thêm wholesalePercent
+export const wholesaleApplies = (product, totalQty) => product.wholesalePercent > 0 && totalQty >= product.wholesaleMinQty;
+export const wholesalePrice = (product) => Math.round(finalPrice(product) * (1 - product.wholesalePercent));
+
+// Tính tiền các dòng hàng: lines = [{ product, quantity, ... }]
+export const priceLines = (lines) => {
+  const qtyByProduct = {};
+  lines.forEach((line) => { qtyByProduct[line.product.id] = (qtyByProduct[line.product.id] || 0) + line.quantity; });
+  const priced = lines.map((line) => {
+    const wholesale = wholesaleApplies(line.product, qtyByProduct[line.product.id]);
+    const unitPrice = wholesale ? wholesalePrice(line.product) : finalPrice(line.product);
+    return { ...line, wholesale, unitPrice, lineTotal: unitPrice * line.quantity };
+  });
+  const subtotal = lines.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
+  const itemsTotal = priced.reduce((sum, line) => sum + line.lineTotal, 0);
+  return { lines: priced, subtotal, itemsTotal, discount: subtotal - itemsTotal };
+};
+
+// Quà nhận được (mốc cao nhất đạt được) và mốc quà kế tiếp để nhắc khách mua thêm
+export const giftFor = (rules, itemsTotal) => rules
+  .filter((rule) => rule.available && rule.minTotal <= itemsTotal)
+  .sort((a, b) => b.minTotal - a.minTotal)[0] || null;
+export const nextGiftFor = (rules, itemsTotal) => rules
+  .filter((rule) => rule.available && rule.minTotal > itemsTotal)
+  .sort((a, b) => a.minTotal - b.minTotal)[0] || null;
+
 // Số lượng còn của một màu; sản phẩm chưa có dữ liệu theo màu thì dùng tồn kho chung
 export const colorStockOf = (product, color) => {
   if (!product) return 0;

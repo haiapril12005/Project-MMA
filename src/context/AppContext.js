@@ -186,13 +186,13 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Kiểm tra lại quyền admin (vừa được cấp trong Supabase thì không cần đăng nhập lại)
-  const refreshAdmin = useCallback(async () => {
+  // Kiểm tra lại vai trò (vừa được cấp quyền admin / nhân viên trong Supabase thì không cần đăng nhập lại)
+  const refreshRole = useCallback(async () => {
     const current = userRef.current;
     if (!current) return;
-    const isAdmin = await api.admin.isAdmin();
-    if (userRef.current?.id === current.id && userRef.current.isAdmin !== isAdmin) {
-      setUser({ ...userRef.current, isAdmin });
+    const role = await api.account.role();
+    if (userRef.current?.id === current.id && userRef.current.role !== role) {
+      setUser({ ...userRef.current, role, isAdmin: role === 'admin', isStaff: role === 'staff' });
     }
   }, [setUser]);
 
@@ -485,7 +485,7 @@ export function AppProvider({ children }) {
     <Ctx.Provider
       value={{
         products, loading, error, loadProducts, user, ready,
-        login, register, resendConfirmation, logout, updateProfile, changePassword, refreshAdmin,
+        login, register, resendConfirmation, logout, updateProfile, changePassword, refreshRole,
         favorites, isFav, toggleFavorite, clearFavorites,
         addToCart, addItemsToCart, setQty, removeFromCart, clearCart, cartCount, maxQtyFor,
         orders, ordersLoading, orderError, loadOrders, placeOrder, requestOrderCancellation, reorderOrder,

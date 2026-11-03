@@ -19,7 +19,7 @@
 
 ## Khởi tạo Supabase lần đầu
 
-Project cần chạy chín file theo đúng thứ tự trong **Supabase Dashboard → SQL Editor**:
+Project cần chạy các file theo đúng thứ tự trong **Supabase Dashboard → SQL Editor**:
 
 1. `supabase/migrations/202610290001_initial_schema.sql`
 2. `supabase/migrations/202610300001_order_cancellations.sql`
@@ -34,8 +34,10 @@ Project cần chạy chín file theo đúng thứ tự trong **Supabase Dashboar
 11. `supabase/migrations/202611030003_collections_admin.sql`
 12. `supabase/migrations/202611030004_admin_orders.sql`
 13. `supabase/migrations/202611030005_deposit_approves_order.sql` (admin bấm "Đã nhận cọc" là đơn tự chuyển sang Đã xác nhận)
-14. `supabase/migrations/202611030006_dashboard_deposits.sql` (thống kê tiền cọc; chạy lại file này nếu lỡ chạy lại 0003/0004)
-15. `supabase/seed.sql` (database mới tạo: chạy lại `202611030003` sau seed để gắn sản phẩm vào bộ sưu tập)
+14. `supabase/migrations/202611030006_dashboard_deposits.sql` (thống kê tiền cọc)
+15. `supabase/migrations/202611030007_wholesale_gifts.sql` (giá sỉ từ 3 cái giảm thêm 10%, quà tặng theo giá trị đơn trong bảng `gift_rules`)
+16. `supabase/migrations/202611030008_staff_incidents_support.sql` (nhân viên giao hàng, giao thiếu/hỏng và giao bù, báo lỗi & bảo hành, chi phí sau bán trong thống kê; luôn chạy file này sau cùng, nếu lỡ chạy lại một file cũ hơn thì chạy lại `202611030007` rồi file này)
+17. `supabase/seed.sql` (database mới tạo: sau seed chạy lại `202611030003`, `202611030007` và `202611030008`)
 
 Migration tạo các bảng nghiệp vụ, trigger, RLS và các RPC đặt/hủy đơn/đánh giá. Seed chỉ thêm 40 sản phẩm; không tạo tài khoản, đơn hàng hoặc đánh giá giả. Migration đánh giá sẽ xóa đánh giá mẫu ẩn danh và các đánh giá cũ không chứng minh được bằng một đơn đã giao.
 
@@ -58,6 +60,18 @@ insert into public.admins (user_id)
 select id from auth.users where email = 'email-tai-khoan-admin@example.com'
 on conflict do nothing;
 ```
+
+Cấp quyền nhân viên giao hàng (sau khi chạy `202611030008`); nhân viên nên cập nhật số điện thoại trong Tài khoản → Sửa thông tin vì khách sẽ thấy số này:
+
+```sql
+insert into public.delivery_staff (user_id)
+select id from auth.users where email = 'email-nhan-vien@example.com'
+on conflict do nothing;
+```
+
+Luồng giao hàng sau migration `202611030008`: admin duyệt đơn → chuẩn bị hàng → phân công nhân viên → nhân viên bấm Xuất kho → Đang lắp đặt → Đã giao & lắp đặt (xác nhận đã thu đủ tiền còn lại). Giao thiếu/hỏng: nhân viên ghi sự cố, đơn chuyển "Chờ giao bù", admin hẹn lịch giao bù (miễn phí), nhân viên giao bù xong mới hoàn tất đơn. Báo lỗi/bảo hành: khách gửi yêu cầu từ đơn đã giao → admin hẹn lịch và phân công → nhân viên kiểm tra, ghi nhận định → admin chốt đổi trả (lỗi cửa hàng), bảo hành (lỗi sử dụng) hoặc từ chối.
+
+Dọn dữ liệu còn sót của tài khoản đã xóa (đơn hàng, báo lỗi, đánh giá, quyền admin/nhân viên): mở `supabase/scripts/cleanup_deleted_accounts.sql`, chạy PHẦN A để xem trước rồi chạy PHẦN B. Đơn chưa giao xong được hoàn kho đúng màu trước khi xóa.
 
 Sau đó chạy `202611030004_admin_orders.sql`: admin xem mọi đơn và thao tác ngay trong app (Tài khoản → Quản trị cửa hàng → Quản lý đơn hàng): chuyển trạng thái theo đúng luồng, xác nhận đã nhận cọc, duyệt/từ chối yêu cầu hủy, cửa hàng hủy đơn; màn Thống kê có thêm biểu đồ thu chi theo ngày/tháng.
 

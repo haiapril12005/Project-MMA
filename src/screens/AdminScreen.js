@@ -46,7 +46,7 @@ export default function AdminScreen({ route, navigation }) {
   }
 
   const summary = data?.summary;
-  const grossProfit = summary ? summary.revenue - summary.costOfGoods : 0;
+  const grossProfit = summary ? summary.revenue - summary.costOfGoods - (summary.afterSalesCost ?? 0) : 0;
   const maxCategory = Math.max(1, ...(data?.categories || []).map((item) => item.revenue));
 
   return (
@@ -89,6 +89,8 @@ export default function AdminScreen({ route, navigation }) {
               <Line label="Tiền hàng đã giao" value={formatVND(summary.goodsRevenue)} />
               <Line label="Phí giao và lắp đặt đã thu" value={formatVND(summary.shippingRevenue)} />
               <Line label="Giá vốn hàng đã giao" value={`-${formatVND(summary.costOfGoods)}`} color={colors.danger} />
+              {summary.giftCost > 0 && <Line label="  Trong đó: quà tặng" value={`-${formatVND(summary.giftCost)}`} color={colors.danger} />}
+              <Line label="Chi phí sau bán (tổn thất, đổi trả, bảo hành)" value={`-${formatVND(summary.afterSalesCost ?? 0)}`} color={colors.danger} />
               <Line label="Tiền cọc đã nhận (đơn trong kỳ)" value={formatVND(summary.depositsReceived ?? 0)} />
               <Line label="Tiền cọc đang giữ (đơn chưa giao xong)" value={formatVND(summary.depositsHeld)} />
               <Line label="Tiền cọc phải hoàn (đơn hủy)" value={formatVND(summary.refundedDeposits)} />
@@ -170,7 +172,7 @@ export default function AdminScreen({ route, navigation }) {
                   <Txt v="small" color={colors.inkSoft}>{deliveryZone(trip.zone)?.label || 'Chưa chọn khu vực'}</Txt>
                   {trip.orders.map((order) => (
                     <View key={order.code} style={s.tripOrder}>
-                      <Txt v="caption" color={colors.ink}>{`${order.timeSlot} · ${order.code} · ${orderStatus(order.status).label}`}</Txt>
+                      <Txt v="caption" color={colors.ink}>{`${order.timeSlot} · ${order.code} · ${orderStatus(order.status).label}${order.staff ? ` · NV ${order.staff}` : ''}`}</Txt>
                       <Txt v="caption" color={colors.inkSoft} numberOfLines={1}>{order.address}</Txt>
                     </View>
                   ))}

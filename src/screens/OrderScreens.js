@@ -24,10 +24,20 @@ import {
   PAYMENT_METHOD,
   PAYMENT_METHODS,
   paymentLabel,
+  priceLines,
   warrantyEndDate,
+  giftFor,
+  INCIDENT_KINDS,
+  OPEN_SUPPORT_STATUSES,
+  supportStatus,
+  warrantyActive,
 } from '../utils';
+import { useGiftRules } from '../hooks/useGiftRules';
+import GiftNotice from '../components/GiftNotice';
 import { Button, EmptyState, Field, Icon, IconButton, ProductImage, Skeleton, Txt } from '../components/ui';
 import DemoQR from '../components/DemoQR';
+import { StaffContact } from '../components/WorkflowParts';
+import { useSupportList } from '../hooks/useSupport';
 
 const CANCELLATION_REASONS = [
   { key: 'wrong_item', label: 'Đặt nhầm sản phẩm, màu hoặc số lượng' },
@@ -251,9 +261,10 @@ export function CheckoutScreen({ route, navigation }) {
     const product = products.find((p) => p.id === String(c.productId));
     return product ? { ...c, product, selectedColor: c.selectedColor || product.color?.[0] || '' } : null;
   }).filter(Boolean), [buyNow, user?.cart, products]);
-  const subtotal = items.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
-  const itemsTotal = items.reduce((sum, i) => sum + Math.round(i.product.price * (1 - i.product.percentOff)) * i.quantity, 0);
-  const discount = subtotal - itemsTotal;
+  // Giá sỉ và quà tặng tính giống database để khách thấy trước; database tính lại khi đặt hàng
+  const { lines, subtotal, itemsTotal, discount } = priceLines(items);
+  const giftRules = useGiftRules(products);
+  const gift = giftFor(giftRules, itemsTotal);
   const zone = findDeliveryZone(zoneKey);
   const shippingFee = zone?.fee || 0;
   const total = itemsTotal + shippingFee;
@@ -462,17 +473,29 @@ export function CheckoutScreen({ route, navigation }) {
 
         <SectionTitle icon="package-variant-closed" title="Sản phẩm" />
         <View style={s.card}>
-          {items.map(({ product: p, quantity, selectedColor }, index) => (
-            <View key={`${p.id}:${selectedColor}`} style={[s.checkoutItem, index < items.length - 1 && s.divider]}>
+          {lines.map(({ product: p, quantity, selectedColor, wholesale, lineTotal }, index) => (
+            <View key={`${p.id}:${selectedColor}`} style={[s.checkoutItem, (index < lines.length - 1 || gift) && s.divider]}>
               <ProductImage width={200} uri={p.uri} category={p.category} iconSize={25} style={s.checkoutImage} />
               <View style={{ flex: 1 }}>
                 <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{p.name}</Txt>
                 <Txt v="caption" color={colors.inkSoft}>{selectedColor || 'Mặc định'} · SL {quantity}</Txt>
+                {wholesale && <Txt v="caption" color={colors.success}>Giá sỉ</Txt>}
               </View>
-              <Txt v="price" color={colors.primary} style={{ fontSize: 14 }}>{formatVND(Math.round(p.price * (1 - p.percentOff)) * quantity)}</Txt>
+              <Txt v="price" color={colors.primary} style={{ fontSize: 14 }}>{formatVND(lineTotal)}</Txt>
             </View>
           ))}
+          {!!gift && (
+            <View style={s.checkoutItem}>
+              <ProductImage width={200} uri={gift.product.uri} category={gift.product.category} iconSize={25} style={s.checkoutImage} />
+              <View style={{ flex: 1 }}>
+                <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{gift.product.name}</Txt>
+                <Txt v="caption" color={colors.success}>{`Quà tặng · SL ${gift.quantity}`}</Txt>
+              </View>
+              <Txt v="price" color={colors.success} style={{ fontSize: 14 }}>Tặng</Txt>
+            </View>
+          )}
         </View>
+        <GiftNotice rules={giftRules} itemsTotal={itemsTotal} style={{ marginTop: 10 }} />
       </ScrollView>
 
       <View style={[s.checkoutBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
@@ -632,6 +655,9 @@ export function OrderDetailScreen({ route, navigation }) {
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [reordering, setReordering] = useState(false);
   const order = orders.find((o) => o.id === String(route.params?.id));
+  const support = useSupportList('mine', user?.id);
+  const reloadSupport = support.reload;
+  useFocusEffect(useCallback(() => { if (user) reloadSupport(); }, [user, reloadSupport]));
 
   if (!order) {
     return (
@@ -647,6 +673,8 @@ export function OrderDetailScreen({ route, navigation }) {
   const zone = findDeliveryZone(order.deliveryZone);
   const deliveredAt = history.find((event) => event.status === ORDER_STATUS.DELIVERED)?.at;
   const depositInfo = DEPOSIT_STATUSES[order.depositStatus];
+  const openSupportItems = new Set(support.requests.filter((request) => OPEN_SUPPORT_STATUSES.includes(request.status)).map((request) => request.orderItemId));
+  const orderSupport = support.requests.filter((request) => request.orderId === order.id);
   // Đơn "Chờ xác nhận": hủy ngay (kể cả khi đang có yêu cầu cũ còn chờ duyệt). Đơn "Đã xác nhận": gửi yêu cầu.
   const instantCancel = order.status === ORDER_STATUS.PENDING_CONFIRMATION && (!cancellation || cancellation.status === CANCELLATION_STATUS.PENDING);
   const canRequestCancellation = instantCancel || (!cancellation && order.status === ORDER_STATUS.CONFIRMED);
@@ -715,6 +743,42 @@ export function OrderDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {(!!order.assignedStaff || order.incidents?.length > 0) && (
+          <>
+            <SectionTitle icon="account-hard-hat-outline" title="Giao hàng" />
+            <View style={[s.card, { gap: 8 }]}>
+              <StaffContact staff={order.assignedStaff} title="Nhân viên giao và lắp đặt" />
+              {order.incidents?.map((incident) => (
+                <Txt key={incident.id} v="small" color={incident.resolvedAt ? colors.inkSoft : colors.danger}>
+                  {`${INCIDENT_KINDS[incident.kind]?.label || 'Sự cố'}: ${incident.note}${incident.resolvedAt ? ' (đã giao bù)' : ''}`}
+                </Txt>
+              ))}
+              {order.status === ORDER_STATUS.DELIVERY_ISSUE && (
+                <Txt v="small" color={colors.primary}>
+                  {order.redelivery
+                    ? `Cửa hàng sẽ giao bù miễn phí ngày ${formatDateOnly(order.redelivery.date)} · ${order.redelivery.timeSlot}.`
+                    : 'Cửa hàng đang sắp xếp lịch giao bù miễn phí và sẽ liên hệ bạn.'}
+                </Txt>
+              )}
+            </View>
+          </>
+        )}
+
+        {orderSupport.length > 0 && (
+          <>
+            <SectionTitle icon="shield-wrench-outline" title="Báo lỗi & bảo hành" />
+            <View style={[s.card, { gap: 6 }]}>
+              {orderSupport.map((request) => (
+                <Pressable key={request.id} onPress={() => navigation.navigate('SupportDetail', { id: request.id })} accessibilityRole="button" style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 8 }, pressed && { opacity: 0.7 }]}>
+                  <Txt v="small" style={{ flex: 1 }} numberOfLines={1}>{request.item?.name}</Txt>
+                  <Txt v="caption" color={supportStatus(request.status).color}>{supportStatus(request.status).label}</Txt>
+                  <Icon name="chevron-right" size={18} color={colors.inkMuted} />
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+
         <SectionTitle icon="timeline-check-outline" title="Theo dõi đơn hàng" />
         <View style={s.card}>
           {history.map((event, index) => {
@@ -770,7 +834,7 @@ export function OrderDetailScreen({ route, navigation }) {
               <ProductImage width={200} uri={item.uri} category={item.category} iconSize={25} style={s.checkoutImage} />
               <View style={{ flex: 1 }}>
                 <Txt v="bodyStrong" numberOfLines={2} style={{ fontSize: 14 }}>{item.name}</Txt>
-                <Txt v="caption" color={colors.inkSoft}>{item.selectedColor || 'Mặc định'} · SL {item.quantity}</Txt>
+                <Txt v="caption" color={colors.inkSoft}>{`${item.selectedColor || 'Mặc định'} · SL ${item.quantity}${item.isGift ? ' · Quà tặng' : ''}`}</Txt>
                 <Txt v="caption" color={colors.success}>
                   {!item.warrantyMonths
                     ? 'Không bảo hành'
@@ -778,8 +842,14 @@ export function OrderDetailScreen({ route, navigation }) {
                       ? `Bảo hành đến ${warrantyEndDate(deliveredAt, item.warrantyMonths)}`
                       : `Bảo hành ${item.warrantyMonths} tháng kể từ ngày lắp đặt`}
                 </Txt>
+                {!!item.id && warrantyActive(order, item) && !openSupportItems.has(item.id) && (
+                  <Pressable onPress={() => navigation.navigate('SupportCreate', { orderId: order.id, itemId: item.id })} accessibilityRole="button" accessibilityLabel={`Báo lỗi ${item.name}`} hitSlop={8} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                    <Txt v="caption" color={colors.primary} style={{ textDecorationLine: 'underline' }}>Báo lỗi / Bảo hành</Txt>
+                  </Pressable>
+                )}
+                {!!item.id && openSupportItems.has(item.id) && <Txt v="caption" color={colors.inkSoft}>Đang xử lý báo lỗi</Txt>}
               </View>
-              <Txt v="price" color={colors.primary} style={{ fontSize: 14 }}>{formatVND(item.unitPrice * item.quantity)}</Txt>
+              <Txt v="price" color={item.isGift ? colors.success : colors.primary} style={{ fontSize: 14 }}>{item.isGift ? 'Tặng' : formatVND(item.unitPrice * item.quantity)}</Txt>
             </Pressable>
           ))}
         </View>

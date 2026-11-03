@@ -22,6 +22,9 @@ const productFromRow = (row) => ({
   colorStock: Object.fromEntries((row.product_color_stock || []).map((item) => [item.color, Number(item.stock)])),
   warrantyMonths: Number(row.warranty_months ?? 24),
   costPrice: Number(row.cost_price || 0),
+  // Database chưa có giá sỉ thì để 0 để app không hứa giảm giá
+  wholesaleMinQty: Number(row.wholesale_min_qty ?? 3),
+  wholesalePercent: Number(row.wholesale_percent ?? 0),
 });
 
 const reviewFromRow = (row) => ({
@@ -74,6 +77,7 @@ const orderFromRow = (row) => {
   code: row.code,
   userId: String(row.user_id),
   items: (row.order_items || []).map((item) => ({
+    id: String(item.id),
     productId: String(item.product_id),
     name: item.product_name,
     brand: item.brand,
@@ -84,6 +88,7 @@ const orderFromRow = (row) => {
     unitPrice: Number(item.unit_price),
     quantity: Number(item.quantity),
     warrantyMonths: Number(item.warranty_months ?? 24),
+    isGift: Boolean(item.is_gift),
   })),
   shipping: {
     name: row.shipping_name,
@@ -111,6 +116,26 @@ const orderFromRow = (row) => {
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   cancellationRequest: cancellationFromRow(cancellationRow),
+  assignedStaff: row.assigned_staff_id ? {
+    id: String(row.assigned_staff_id),
+    name: row.assigned_staff_name || 'Nhân viên',
+    phone: row.assigned_staff_phone || '',
+  } : null,
+  redelivery: row.redelivery_date ? { date: row.redelivery_date, timeSlot: row.redelivery_time_slot } : null,
+  cashCollected: row.cash_collected == null ? null : Number(row.cash_collected),
+  cashCollectedAt: row.cash_collected_at || null,
+  incidents: (row.delivery_incidents || [])
+    .map((incident) => ({
+      id: String(incident.id),
+      kind: incident.kind,
+      note: incident.note,
+      photoCount: Number(incident.photo_count || 0),
+      reportedBy: incident.reported_by_name || '',
+      reportedAt: incident.reported_at,
+      lossCost: Number(incident.loss_cost || 0),
+      resolvedAt: incident.resolved_at,
+    }))
+    .sort((a, b) => String(a.reportedAt).localeCompare(String(b.reportedAt))),
   });
 };
 
@@ -126,12 +151,54 @@ const collectionFromRow = (row) => ({
     .map((item) => String(item.product_id)),
 });
 
-const orderSelect = `
+const supportFromRow = (row) => ({
+  id: String(row.id),
+  orderId: String(row.order_id),
+  orderItemId: String(row.order_item_id),
+  orderCode: row.orders?.code || '',
+  customer: row.orders ? { name: row.orders.shipping_name, phone: row.orders.shipping_phone, address: row.orders.shipping_address } : null,
+  item: row.order_items ? {
+    name: row.order_items.product_name,
+    category: row.order_items.category,
+    uri: row.order_items.image_url,
+    selectedColor: row.order_items.selected_color,
+    isGift: Boolean(row.order_items.is_gift),
+  } : null,
+  quantity: Number(row.quantity),
+  description: row.description,
+  photoCount: Number(row.photo_count || 0),
+  earlyReport: Boolean(row.early_report),
+  status: row.status,
+  staff: row.assigned_staff_id ? { id: String(row.assigned_staff_id), name: row.assigned_staff_name || 'Nhân viên', phone: row.assigned_staff_phone || '' } : null,
+  visit: row.visit_date ? { date: row.visit_date, timeSlot: row.visit_time_slot } : null,
+  assessment: row.staff_assessment || null,
+  staffNote: row.staff_note || '',
+  staffPhotoCount: Number(row.staff_photo_count || 0),
+  conclusion: row.conclusion || null,
+  resolution: row.resolution || null,
+  cost: Number(row.cost || 0),
+  adminNote: row.admin_note || '',
+  createdAt: row.created_at,
+  resolvedAt: row.resolved_at,
+});
+
+const SUPPORT_SELECT = '*, orders(code, shipping_name, shipping_phone, shipping_address), order_items(product_name, category, image_url, selected_color, is_gift)';
+
+// Đơn hàng kèm sự cố giao hàng; database chưa có bảng delivery_incidents thì đọc như cũ
+const ORDER_SELECT_BASE = `
   *,
   order_items (*),
   order_status_history (*),
   order_cancellation_requests (*)
 `;
+const ORDER_SELECT = `${ORDER_SELECT_BASE}, delivery_incidents (*)`;
+
+const fetchOrders = async (build) => {
+  const result = await build(supabase.from('orders').select(ORDER_SELECT));
+  if (!result.error) return result.data;
+  return unwrap(await build(supabase.from('orders').select(ORDER_SELECT_BASE)));
+};
+const fetchOrder = async (orderId) => orderFromRow(await fetchOrders((query) => query.eq('id', orderId).single()));
 
 export const api = {
   auth: {
@@ -159,6 +226,18 @@ export const api = {
     const rows = withColors.error ? unwrap(await supabase.from('products').select('*').order('id')) : withColors.data;
     return rows.map(productFromRow);
   },
+  promotions: {
+    // Database chưa có bảng gift_rules thì không có quà
+    giftRules: async () => {
+      const { data, error } = await supabase.from('gift_rules').select('*').eq('active', true).order('min_total');
+      return error ? [] : data.map((row) => ({
+        id: String(row.id),
+        minTotal: Number(row.min_total),
+        productId: String(row.product_id),
+        quantity: Number(row.quantity),
+      }));
+    },
+  },
   collections: {
     // Database chưa chạy migration bộ sưu tập thì trả về danh sách rỗng
     list: async () => {
@@ -170,36 +249,84 @@ export const api = {
     },
   },
   admin: {
-    isAdmin: async () => {
-      const { data, error } = await supabase.rpc('is_admin');
-      return !error && data === true;
-    },
     dashboard: async (days) => unwrap(await supabase.rpc('admin_dashboard', { p_days: days })),
     // Admin đọc được mọi đơn nhờ chính sách RLS "admins read all orders"
     listOrders: async () => {
-      const rows = unwrap(await supabase.from('orders').select(orderSelect).order('created_at', { ascending: false }).limit(100));
+      const rows = await fetchOrders((query) => query.order('created_at', { ascending: false }).limit(100));
       return rows.map(orderFromRow);
     },
-    getOrder: async (orderId) => orderFromRow(unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single())),
+    getOrder: fetchOrder,
     updateStatus: async (orderId, status) => unwrap(await supabase.rpc('admin_update_order_status', { p_order_id: orderId, p_status: status })),
     markDepositPaid: async (orderId) => unwrap(await supabase.rpc('admin_mark_deposit_paid', { p_order_id: orderId })),
     reviewCancellation: async (orderId, approve, note) => unwrap(await supabase.rpc('admin_review_cancellation', {
       p_order_id: orderId, p_approve: approve, p_note: note || '',
     })),
+    listStaff: async () => (unwrap(await supabase.rpc('admin_list_staff')) || []).map((staff) => ({
+      id: String(staff.id), name: staff.name, phone: staff.phone || '',
+    })),
+    assignStaff: async (orderId, staffId) => unwrap(await supabase.rpc('admin_assign_staff', { p_order_id: orderId, p_staff_id: staffId })),
+    scheduleRedelivery: async (orderId, { date, timeSlot, staffId, lossCost }) => unwrap(await supabase.rpc('admin_schedule_redelivery', {
+      p_order_id: orderId, p_date: date, p_time_slot: timeSlot, p_staff_id: staffId || null, p_loss_cost: lossCost || 0,
+    })),
+    listSupport: async () => unwrap(await supabase.from('support_requests').select(SUPPORT_SELECT).order('created_at', { ascending: false }).limit(100)).map(supportFromRow),
+    scheduleSupport: async (requestId, { staffId, date, timeSlot }) => unwrap(await supabase.rpc('admin_schedule_support', {
+      p_request_id: requestId, p_staff_id: staffId, p_date: date, p_time_slot: timeSlot,
+    })),
+    resolveSupport: async (requestId, { conclusion, resolution, cost, note }) => unwrap(await supabase.rpc('admin_resolve_support', {
+      p_request_id: requestId, p_conclusion: conclusion, p_resolution: resolution || null,
+      p_cost: cost === '' || cost == null ? null : Number(cost), p_note: note || '',
+    })),
+  },
+  // Nhân viên giao hàng (admin cũng gọi được các hàm giao hàng)
+  staff: {
+    myOrders: async (userId) => (await fetchOrders((query) => query
+      .eq('assigned_staff_id', userId)
+      .in('status', ['preparing', 'shipping', 'installing', 'delivery_issue'])
+      .order('installation_date', { ascending: true }))).map(orderFromRow),
+    myVisits: async (userId) => unwrap(await supabase.from('support_requests').select(SUPPORT_SELECT)
+      .eq('assigned_staff_id', userId).in('status', ['scheduled', 'in_progress']).order('visit_date', { ascending: true })).map(supportFromRow),
+    updateStatus: async (orderId, status) => unwrap(await supabase.rpc('staff_update_order_status', { p_order_id: orderId, p_status: status })),
+    reportIncident: async (orderId, { kind, note, photoCount }) => unwrap(await supabase.rpc('staff_report_incident', {
+      p_order_id: orderId, p_kind: kind, p_note: note, p_photo_count: photoCount || 0,
+    })),
+    completeDelivery: async (orderId, cash) => unwrap(await supabase.rpc('staff_complete_delivery', { p_order_id: orderId, p_cash_collected: cash })),
+    submitAssessment: async (requestId, { assessment, note, photoCount }) => unwrap(await supabase.rpc('staff_submit_assessment', {
+      p_request_id: requestId, p_assessment: assessment, p_note: note, p_photo_count: photoCount || 0,
+    })),
+  },
+  // Khách: báo lỗi / bảo hành
+  support: {
+    mine: async (userId) => {
+      const { data, error } = await supabase.from('support_requests').select(SUPPORT_SELECT).eq('customer_id', userId).order('created_at', { ascending: false });
+      return error ? [] : data.map(supportFromRow);
+    },
+    get: async (requestId) => supportFromRow(unwrap(await supabase.from('support_requests').select(SUPPORT_SELECT).eq('id', requestId).single())),
+    create: async ({ orderItemId, quantity, description, photoCount }) => unwrap(await supabase.rpc('create_support_request', {
+      p_order_item_id: orderItemId, p_quantity: quantity, p_description: description, p_photo_count: photoCount || 0,
+    })),
+    cancel: async (requestId) => unwrap(await supabase.rpc('cancel_support_request', { p_request_id: requestId })),
   },
   account: {
+    // 'admin' | 'staff' | 'customer'; database cũ chưa có my_role thì chỉ phân biệt admin
+    role: async () => {
+      const result = await supabase.rpc('my_role');
+      if (!result.error && result.data) return result.data;
+      const admin = await supabase.rpc('is_admin');
+      return !admin.error && admin.data === true ? 'admin' : 'customer';
+    },
     get: async (authUser) => {
       const [profile, cart, favorites] = await Promise.all([
         unwrap(await supabase.from('profiles').select('*').eq('id', authUser.id).single()),
         unwrap(await supabase.from('cart_items').select('*').eq('user_id', authUser.id).order('created_at')),
         unwrap(await supabase.from('favorites').select('product_id').eq('user_id', authUser.id).order('created_at', { ascending: false })),
       ]);
-      // Database chưa có chức năng admin thì coi như khách thường
-      const isAdmin = await api.admin.isAdmin();
+      const role = await api.account.role();
       return {
         id: authUser.id,
         email: authUser.email,
-        isAdmin,
+        role,
+        isAdmin: role === 'admin',
+        isStaff: role === 'staff',
         name: profile.name,
         phone: profile.phone || '',
         address: profile.address || '',
@@ -271,7 +398,7 @@ export const api = {
   },
   orders: {
     byUser: async (userId) => {
-      const rows = unwrap(await supabase.from('orders').select(orderSelect).eq('user_id', userId).order('created_at', { ascending: false }));
+      const rows = await fetchOrders((query) => query.eq('user_id', userId).order('created_at', { ascending: false }));
       return rows.map(orderFromRow);
     },
     place: async ({ shipping, paymentMethod, installation, deliveryZone }) => {
@@ -285,8 +412,7 @@ export const api = {
         p_installation_note: installation.note || '',
         p_delivery_zone: deliveryZone,
       }));
-      const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
-      return orderFromRow(row);
+      return fetchOrder(orderId);
     },
     // Mua ngay: đặt đúng 1 sản phẩm, không dùng giỏ hàng
     placeBuyNow: async ({ item, shipping, paymentMethod, installation, deliveryZone }) => {
@@ -303,8 +429,7 @@ export const api = {
         p_installation_note: installation.note || '',
         p_delivery_zone: deliveryZone,
       }));
-      const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
-      return orderFromRow(row);
+      return fetchOrder(orderId);
     },
     requestCancellation: async ({ orderId, reasonCode, reasonDetail }) => {
       unwrap(await supabase.rpc('request_order_cancellation', {
@@ -312,8 +437,7 @@ export const api = {
         p_reason_code: reasonCode,
         p_reason_detail: reasonDetail || '',
       }));
-      const row = unwrap(await supabase.from('orders').select(orderSelect).eq('id', orderId).single());
-      return orderFromRow(row);
+      return fetchOrder(orderId);
     },
     reorder: async (orderId) => reorderFromData(unwrap(await supabase.rpc('reorder_delivered_order', {
       p_order_id: orderId,

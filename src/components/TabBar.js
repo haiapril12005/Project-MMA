@@ -12,6 +12,8 @@ const TABS = {
   Profile: { label: 'Tài khoản', icon: 'account-outline', active: 'account' },
   AdminHome: { label: 'Tổng quan', icon: 'chart-box-outline', active: 'chart-box' },
   AdminOrdersTab: { label: 'Đơn hàng', icon: 'clipboard-list-outline', active: 'clipboard-list' },
+  AdminSupportTab: { label: 'Bảo hành', icon: 'shield-wrench-outline', active: 'shield-wrench' },
+  StaffHome: { label: 'Việc của tôi', icon: 'clipboard-text-clock-outline', active: 'clipboard-text-clock' },
 };
 // Admin vẫn dùng tab "Home" (để các nút quay về trang chủ chạy đúng) nhưng hiện là "Sản phẩm"
 const ADMIN_HOME = { label: 'Sản phẩm', icon: 'sofa-outline', active: 'sofa' };
